@@ -1,0 +1,331 @@
+{
+  "provenance": {
+    "kind": "renderer-fixture",
+    "description": "Real Chromium discovery/geometry/font layout using known synthetic annotations and example Vietnamese strings. No OCR, Gemini or reference extension execution."
+  },
+  "images": [],
+  "discovery": {
+    "foundImageIds": [
+      "en",
+      "ja",
+      "zh",
+      "ko"
+    ]
+  },
+  "renderer": {
+    "samples": [
+      {
+        "imageId": "en",
+        "regionId": "en-narration",
+        "expected": {
+          "x": 54,
+          "y": 30.234375,
+          "width": 340,
+          "height": 33
+        },
+        "actual": {
+          "x": 54,
+          "y": 30.234375,
+          "width": 340,
+          "height": 33
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "en",
+        "regionId": "en-dialogue",
+        "expected": {
+          "x": 60,
+          "y": 120.234375,
+          "width": 160,
+          "height": 120
+        },
+        "actual": {
+          "x": 60,
+          "y": 120.234375,
+          "width": 160,
+          "height": 120
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "en",
+        "regionId": "en-sfx",
+        "expected": {
+          "x": 248.00000000000003,
+          "y": 216.234375,
+          "width": 132,
+          "height": 66
+        },
+        "actual": {
+          "x": 248,
+          "y": 216.234375,
+          "width": 132,
+          "height": 66
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "en",
+        "regionId": "en-small",
+        "expected": {
+          "x": 228,
+          "y": 474.234375,
+          "width": 168,
+          "height": 39
+        },
+        "actual": {
+          "x": 228,
+          "y": 474.234375,
+          "width": 168,
+          "height": 39
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "ja",
+        "regionId": "ja-narration",
+        "expected": {
+          "x": 478,
+          "y": 30.234375,
+          "width": 340,
+          "height": 33
+        },
+        "actual": {
+          "x": 478,
+          "y": 30.234375,
+          "width": 340,
+          "height": 33
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "ja",
+        "regionId": "ja-dialogue",
+        "expected": {
+          "x": 484,
+          "y": 120.234375,
+          "width": 160,
+          "height": 120
+        },
+        "actual": {
+          "x": 484,
+          "y": 120.234375,
+          "width": 160,
+          "height": 120
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "ja",
+        "regionId": "ja-sfx",
+        "expected": {
+          "x": 672,
+          "y": 216.234375,
+          "width": 132,
+          "height": 66
+        },
+        "actual": {
+          "x": 672,
+          "y": 216.234375,
+          "width": 132,
+          "height": 66
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "ja",
+        "regionId": "ja-small",
+        "expected": {
+          "x": 652,
+          "y": 474.234375,
+          "width": 168,
+          "height": 39
+        },
+        "actual": {
+          "x": 652,
+          "y": 474.234375,
+          "width": 168,
+          "height": 39
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "zh",
+        "regionId": "zh-narration",
+        "expected": {
+          "x": 54,
+          "y": 329.734375,
+          "width": 340,
+          "height": 33
+        },
+        "actual": {
+          "x": 54,
+          "y": 329.734375,
+          "width": 340,
+          "height": 33
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "zh",
+        "regionId": "zh-dialogue",
+        "expected": {
+          "x": 60,
+          "y": 419.734375,
+          "width": 160,
+          "height": 120
+        },
+        "actual": {
+          "x": 60,
+          "y": 419.734375,
+          "width": 160,
+          "height": 120
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "zh",
+        "regionId": "zh-sfx",
+        "expected": {
+          "x": 248.00000000000003,
+          "y": 515.734375,
+          "width": 132,
+          "height": 66
+        },
+        "actual": {
+          "x": 248,
+          "y": 515.734375,
+          "width": 132,
+          "height": 66
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "zh",
+        "regionId": "zh-small",
+        "expected": {
+          "x": 228,
+          "y": 773.734375,
+          "width": 168,
+          "height": 39
+        },
+        "actual": {
+          "x": 228,
+          "y": 773.734375,
+          "width": 168,
+          "height": 39
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "ko",
+        "regionId": "ko-narration",
+        "expected": {
+          "x": 478,
+          "y": 329.734375,
+          "width": 340,
+          "height": 33
+        },
+        "actual": {
+          "x": 478,
+          "y": 329.734375,
+          "width": 340,
+          "height": 33
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "ko",
+        "regionId": "ko-dialogue",
+        "expected": {
+          "x": 484,
+          "y": 419.734375,
+          "width": 160,
+          "height": 120
+        },
+        "actual": {
+          "x": 484,
+          "y": 419.734375,
+          "width": 160,
+          "height": 120
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "ko",
+        "regionId": "ko-sfx",
+        "expected": {
+          "x": 672,
+          "y": 515.734375,
+          "width": 132,
+          "height": 66
+        },
+        "actual": {
+          "x": 672,
+          "y": 515.734375,
+          "width": 132,
+          "height": 66
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      },
+      {
+        "imageId": "ko",
+        "regionId": "ko-small",
+        "expected": {
+          "x": 652,
+          "y": 773.734375,
+          "width": 168,
+          "height": 39
+        },
+        "actual": {
+          "x": 652,
+          "y": 773.734375,
+          "width": 168,
+          "height": 39
+        },
+        "overflow": false,
+        "readable": true,
+        "fontCssPx": 10
+      }
+    ]
+  },
+  "runtime": {
+    "memory": {
+      "scope": "single page JavaScript heap sample; excludes decoded image/GPU/offscreen/process RAM",
+      "jsHeapUsedBytes": 4663868,
+      "jsHeapTotalBytes": 9957376,
+      "metadataBytes": 8246
+    }
+  }
+}

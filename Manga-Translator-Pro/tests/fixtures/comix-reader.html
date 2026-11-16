@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Fixed single-page reader reproduction</title>
+<!-- Reduced structural reproduction from public Comix CSS/JS inspected 2026-11-15.
+     Synthetic local artwork only; no chapter assets, account, API or site-specific production adapter. -->
+<style>
+  *{box-sizing:border-box}body{margin:0;background:#222b2e;height:3000px}
+  .rpage{position:fixed;inset:0;overflow:hidden;background:#222b2e}
+  .rpage-main{display:flex;position:absolute;inset:0;overflow:hidden;flex-direction:column}
+  .swiper{width:100%;height:100%;overflow:hidden}
+  .swiper-wrapper{display:flex;width:100%;height:100%;transform:translate3d(0,0,0)}
+  .swiper-slide{position:relative;flex-shrink:0;width:100%;height:100%}
+  .rpage-zoom-outer,.rpage-zoom-container{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+  .rpage-view{display:flex;align-items:center;justify-content:center;width:100%;height:100%;transform:translate3d(0,0,0) scale(.5)}
+  .rpage-page{position:relative;display:block;flex:none;width:1000px;height:1600px;aspect-ratio:1000/1600}
+  .rpage-page__img{display:block;width:100%;height:100%;object-fit:contain}
+</style>
+<main class="rpage"><section class="rpage-main"><div class="swiper"><div class="swiper-wrapper">
+<div class="swiper-slide"><div class="swiper-zoom-container rpage-zoom-outer"><div class="rpage-view rpage-view--pages rpage-view--solo swiper-zoom-target"><div class="rpage-zoom-container"><div class="rpage-page" data-page="1"><img id="page" class="rpage-page__img" width="1000" height="1600" alt="Page 1" decoding="async" referrerpolicy="no-referrer" src="/panel.svg?id=COMIX-STRUCTURE"></div></div></div></div></div>
+</div></div></section></main></html>

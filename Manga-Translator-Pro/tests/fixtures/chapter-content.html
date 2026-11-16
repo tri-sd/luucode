@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Chapter content regression fixture</title>
+<style>
+body{margin:0;padding:30px 0;background:#edf2f5;font:14px Arial,sans-serif}h1{font-size:18px;text-align:center;margin:0 0 20px}
+#reader{width:400px;margin:0 auto}.comic{display:block;width:400px;height:640px;margin:0 0 20px}
+body.fixed{height:900px}.fixed #reader{position:fixed;inset:40px 0 20px;margin:auto;width:400px;overflow:auto}
+</style>
+<h1>Synthetic chapter lifecycle fixture</h1><main id="reader"></main>
+<script>
+const params=new URLSearchParams(location.search);const count=Math.min(100,Number(params.get('count'))||50);
+const chapter=params.get('chapter')||'A'; const reader=document.querySelector('#reader');
+function image(index,name=chapter){const img=document.createElement('img');img.id='page-'+index;img.className='comic';img.width=1000;img.height=1600;img.alt='Page '+(index+1);img.src='/panel.svg?id=CHAPTER-'+name+'-'+index;return img;}
+const fixed=params.get('mode')==='fixed';if(fixed)document.body.classList.add('fixed');
+for(let index=0;index<(fixed?1:count);index++)reader.append(image(index));
+window.fixtureReady=Promise.all([...document.images].map(img=>img.decode())).then(()=>true);
+window.chapterFixture={
+ add(index){const img=image(index);reader.append(img);return img.decode();},
+ remount(index){document.querySelector('#page-'+index)?.remove();const img=image(index);const next=[...reader.children].find(child=>Number(child.id.slice(5))>index);reader.insertBefore(img,next||null);return img.decode();},
+ turn(index){const img=reader.querySelector('img');img.alt='Page '+(index+1);img.src='/panel.svg?id=FIXED-'+index;return img.decode();},
+ navigate(name){history.pushState({},'',location.pathname+'?chapter='+name+'&count='+count);reader.replaceChildren();for(let index=0;index<count;index++)reader.append(image(index,name));return Promise.all([...document.images].map(img=>img.decode()));}
+};
+</script></html>

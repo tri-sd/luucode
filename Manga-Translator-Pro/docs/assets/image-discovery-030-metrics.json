@@ -1,0 +1,196 @@
+{
+  "browser": "Chromium 156.0.8078.79 (headless, Linux)",
+  "stats": {
+    "startTime": "2026-11-15T16:39:14.612Z",
+    "duration": 40697.64,
+    "expected": 57,
+    "skipped": 3,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "metrics": [
+    {
+      "test": "built Tracking Lab runs in browser, uses local assets and renders no duplicate overlays",
+      "maxErrorCssPx": 0.006249999999994316,
+      "externalRequests": 0,
+      "mode": "production bundle served over HTTP, not installed extension"
+    },
+    {
+      "test": "fixed page reader at 50% selects the displayed page",
+      "maxErrorCssPx": 0,
+      "siteScale": 0.5
+    },
+    {
+      "test": "canvas discovers a visible surface in a fixed reader",
+      "maxErrorCssPx": 0,
+      "method": "canvas"
+    },
+    {
+      "test": "tainted discovers a visible surface in a fixed reader",
+      "maxErrorCssPx": 0,
+      "method": "tainted"
+    },
+    {
+      "test": "background discovers a visible surface in a fixed reader",
+      "maxErrorCssPx": 0,
+      "method": "background"
+    },
+    {
+      "test": "picture discovers a visible surface in a fixed reader",
+      "maxErrorCssPx": 0,
+      "method": "picture"
+    },
+    {
+      "test": "long-strip lazy pages track after scrolling in both directions",
+      "maxErrorCssPx": 0.006249999999994316,
+      "stripSamples": 5
+    },
+    {
+      "test": "fixed image object-fit contain and object-position survive zoom/resize",
+      "maxErrorCssPx": 0,
+      "fit": "contain"
+    },
+    {
+      "test": "fixed image object-fit cover and object-position survive zoom/resize",
+      "maxErrorCssPx": 0.012500000000002842,
+      "fit": "cover"
+    },
+    {
+      "test": "CSS zoom and independent scale retain correct positions",
+      "maxErrorCssPx": 0.012500000000002842
+    },
+    {
+      "test": "canvas screenshot crop and overlay use actual bitmap ratio at DPR 1",
+      "dpr": 1,
+      "maxErrorCssPx": 0,
+      "submittedImageDimensions": [
+        500,
+        550
+      ],
+      "viewport": [
+        1200,
+        900
+      ]
+    },
+    {
+      "test": "canvas screenshot crop and overlay use actual bitmap ratio at DPR 1.25",
+      "dpr": 1.25,
+      "maxErrorCssPx": 0.25,
+      "submittedImageDimensions": [
+        624,
+        687
+      ],
+      "viewport": [
+        1200,
+        900
+      ]
+    },
+    {
+      "test": "canvas screenshot crop and overlay use actual bitmap ratio at DPR 1.5",
+      "dpr": 1.5,
+      "maxErrorCssPx": 0,
+      "submittedImageDimensions": [
+        750,
+        825
+      ],
+      "viewport": [
+        1200,
+        900
+      ]
+    },
+    {
+      "test": "canvas screenshot crop and overlay use actual bitmap ratio at DPR 2",
+      "dpr": 2,
+      "maxErrorCssPx": 0,
+      "submittedImageDimensions": [
+        1000,
+        1100
+      ],
+      "viewport": [
+        1200,
+        900
+      ]
+    },
+    {
+      "test": "Comix-style img/picture DOM inside fixed Swiper container is selected and translates",
+      "maxErrorCssPx": 0,
+      "provider": "mocked Gemini HTTP response",
+      "site": "local structural fixture"
+    },
+    {
+      "test": "root CSS zoom compensates overlay CSS units",
+      "maxErrorCssPx": 0.009375000000005684,
+      "cssZoom": [
+        ".8",
+        "1.25",
+        "1.5",
+        "1"
+      ]
+    },
+    {
+      "test": "background cover and position map to the source rather than the element bounds",
+      "maxErrorCssPx": 0.003124999999997158
+    },
+    {
+      "test": "one Shadow DOM root, idempotent start, no image attributes or layout changes",
+      "layoutChanged": false,
+      "maxErrorCssPx": 0.009375000000005684
+    },
+    {
+      "test": "100 bidirectional document scroll positions do not accumulate drift",
+      "samples": 100,
+      "maxErrorCssPx": 0.009375000000005684
+    },
+    {
+      "test": "native wheel scrolling keeps the document-anchored surface aligned during motion",
+      "motionSamples": 32,
+      "maxErrorCssPx": 0.009375000000005684
+    },
+    {
+      "test": "responsive resize preserves normalized coordinates",
+      "maxErrorCssPx": 0.010000000000005116,
+      "viewportWidths": [
+        600,
+        1400,
+        810,
+        1200
+      ]
+    },
+    {
+      "test": "layout shift above an unchanged image is detected without relying on ResizeObserver",
+      "shiftCssPx": 177.5,
+      "maxErrorCssPx": 0.009375000000005684
+    },
+    {
+      "test": "device pixel ratios preserve CSS pixel geometry",
+      "devicePixelRatios": [
+        1.25,
+        1.5,
+        2
+      ],
+      "maxErrorCssPx": 0.009375000000005684
+    },
+    {
+      "test": "nested scrolling is aligned and clipped to the scroll container",
+      "maxErrorCssPx": 0.006249999999994316,
+      "nestedScrollSamples": 5
+    },
+    {
+      "test": "object-fit contain accounts for padding, border and object-position",
+      "fit": "contain",
+      "maxErrorCssPx": 1.4210854715202004e-14
+    },
+    {
+      "test": "object-fit cover accounts for padding, border and object-position",
+      "fit": "cover",
+      "maxErrorCssPx": 0.006249999999994316
+    },
+    {
+      "test": "mock Gemini: real image decode, JSON normalization, multiple Vietnamese overlays and unchanged tracking",
+      "mode": "mock Gemini, real browser image/overlay pipeline",
+      "regions": 2,
+      "maxErrorCssPx": 0
+    }
+  ],
+  "maxErrorCssPx": 0.25
+}

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1600" viewBox="0 0 1000 1600">
+  <rect width="1000" height="1600" fill="#fffaf0"/>
+  <path d="M20 20H980V1580H20Z M20 540H980 M20 1040H980 M510 540V1040" fill="none" stroke="#18364e" stroke-width="12"/>
+  <path d="M40 500L300 290 480 500M540 1000L750 700 960 1000M50 1540L400 1160 940 1540" fill="#d1dfe8" stroke="#6e90a7" stroke-width="6"/>
+  <circle cx="700" cy="270" r="90" fill="#a9c9c6"/>
+  <rect x="120" y="240" width="340" height="176" rx="35" fill="white" stroke="#2873bd" stroke-width="2"/>
+  <rect x="540" y="912" width="320" height="192" rx="35" fill="white" stroke="#2873bd" stroke-width="2"/>
+  <text x="150" y="310" font-family="sans-serif" font-size="28">LET'S BEGIN!</text>
+  <text x="570" y="980" font-family="sans-serif" font-size="25">FOLLOW THE IMAGE.</text>
+  <text x="65" y="100" font-family="sans-serif" font-size="43" fill="#18364e">MANGA / TRACKING LAB</text>
+  <text x="60" y="1490" font-family="sans-serif" font-size="28" fill="#18364e">SYNTHETIC PAGE / 1000 x 1600</text>
+</svg>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Reader regression fixtures</title>
+<style>
+  * { box-sizing: border-box; } body { margin:0; background:#222b2e; height:3000px; }
+  #reader { position:fixed; inset:32px 48px; overflow:hidden; background:#303b40; }
+  #scroller { position:absolute; inset:0; overflow:auto; }
+  #zoom { width:1000px; margin:0 auto; transform:translate3d(0, 0, 0) scale(.5); transform-origin:top center; }
+  #page { display:block; width:1000px; height:1600px; }
+  #inactive { position:absolute; left:0; top:0; width:1000px; height:1600px; visibility:hidden; }
+</style>
+<main id="reader"><div id="scroller"><div id="zoom"></div></div></main>
+<script>
+  const mode = new URLSearchParams(location.search).get('mode') || 'fixed';
+  const zoom = document.querySelector('#zoom');
+  const page = document.createElement(mode === 'canvas' || mode === 'tainted' ? 'canvas' : mode === 'background' ? 'div' : 'img');
+  page.id = 'page';
+  if (page instanceof HTMLCanvasElement) {
+    page.width = 1000; page.height = 1600;
+    const image = new Image();
+    image.onload = () => { page.getContext('2d').drawImage(image,0,0,1000,1600); window.fixtureReady = true; };
+    image.src = (mode === 'tainted' ? location.origin.replace('127.0.0.1','localhost') : '') + '/panel.svg?id=CANVAS';
+  } else if (mode === 'background') {
+    page.style.background = 'url("/panel.svg?id=BACKGROUND") center / contain no-repeat';
+    window.fixtureReady = true;
+  } else if (mode === 'picture') {
+    const picture = document.createElement('picture');
+    const source = document.createElement('source');
+    source.srcset='/panel.svg?id=PICTURE 1x'; picture.append(source,page); zoom.append(picture);
+    page.src='/panel.svg?id=FALLBACK';
+    page.onload=()=>{ window.fixtureReady=true; };
+  } else if (mode === 'lazy') {
+    page.dataset.src='/panel.svg?id=LAZY'; page.loading='lazy'; window.fixtureReady=true;
+  } else { page.src='/panel.svg?id=FIXED'; page.onload=()=>{ window.fixtureReady=true; }; }
+  if (!page.parentElement) zoom.append(page);
+  const inactive=document.createElement('img'); inactive.id='inactive'; inactive.src='/panel.svg?id=INACTIVE'; zoom.prepend(inactive);
+  if (mode==='long-strip') {
+    document.querySelector('#reader').style.position='relative';
+    document.querySelector('#reader').style.inset='auto';
+    document.querySelector('#scroller').style.position='relative';
+    zoom.style.transform='none'; zoom.style.width='600px';
+    page.style.width='600px'; page.style.height='960px';
+    for(let i=0;i<3;i++){const image=document.createElement('img');image.id='strip-'+i;image.width=600;image.height=960;image.loading='lazy';image.src='/panel.svg?id=STRIP'+i;zoom.append(image);}
+  }
+</script></html>

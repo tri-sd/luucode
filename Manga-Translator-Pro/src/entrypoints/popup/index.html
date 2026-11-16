@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manga Translator Pro</title></head>
+<body>
+  <header><span class="eyebrow">MANGA TRANSLATOR PRO</span><h1>Dịch truyện sang tiếng Việt</h1><p>Anh · Nhật · Trung · Hàn → Tiếng Việt</p></header>
+  <main>
+    <p id="config-summary">Đang đọc cấu hình…</p>
+    <section id="chapter-section" aria-label="Dịch chương">
+      <button id="enable-site" type="button">Bật nút nổi trên website này</button>
+      <p id="chapter-access" class="capture-note">Cho phép một lần để tự nhận diện ảnh và hiện nút nổi khi quay lại website.</p>
+      <div id="chapter-panel"></div>
+      <button id="chapter-refresh" type="button">Cập nhật chương</button>
+    </section>
+    <h2>Dịch riêng ảnh đang xem</h2>
+    <p id="image-summary">Đang tìm ảnh…</p>
+    <label class="capture-option"><input id="use-capture" type="checkbox"> Dùng ảnh chụp vùng hiển thị</label>
+    <p class="capture-note">Canvas/ảnh nội bộ cần ảnh chụp. Chỉ vùng ảnh đang thấy được gửi; hãy giữ trang đứng yên lúc chụp.</p>
+    <div class="actions"><button id="translate" type="button" disabled>Dịch ảnh đang xem</button><button id="cancel" type="button" disabled>Hủy</button></div>
+    <div class="tools"><button id="refresh" type="button">Cập nhật ảnh</button><button id="clear-overlay" type="button">Xóa overlay</button><button id="configure" type="button">Cấu hình Gemini</button></div>
+    <p id="translation-status" role="status" aria-live="polite">Ảnh chỉ được gửi tới Gemini sau khi bạn bấm Dịch. Ảnh dài có thể cần nhiều request.</p>
+    <details id="debug"><summary>Debug Image Detection</summary><button id="debug-refresh" type="button">Kiểm tra nhận diện</button><p id="debug-summary"></p><div id="debug-entries"></div></details>
+    <section id="result" hidden><h2>Kết quả tác vụ gần nhất</h2><p id="result-count"></p><details><summary>Văn bản gốc và bản dịch</summary><div id="transcript"></div></details><details><summary>JSON đã chuẩn hóa</summary><pre id="json-output"></pre></details></section>
+  </main>
+  <script type="module" src="./main.ts"></script>
+</body></html>

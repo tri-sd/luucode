@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manga Translator Pro — Tracking Lab</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { scroll-behavior: auto; }
+    body { margin: 0; background: #edf1f5; color: #192e41; font: 16px/1.5 Arial, sans-serif; }
+    header { padding: 24px; background: #122c43; color: white; }
+    h1 { font-size: 23px; margin: 0 0 6px; }
+    p { margin: 0; }
+    main { max-width: 900px; width: calc(100% - 48px); margin: 24px auto; }
+    .page { display: block; width: 100%; height: auto; margin: 0 0 24px; }
+    #decoration { width: 32px; height: 32px; }
+    #late-block { height: 0; }
+    #lazy-section { margin-top: 2600px; }
+    #page-lazy { min-height: 600px; }
+    .note { padding: 16px; margin-bottom: 20px; background: white; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Manga Translator Pro · Tracking Lab</h1>
+    <p>Ảnh mẫu tổng hợp · mọi nội dung dịch đều là GIẢ LẬP · không gọi API.</p>
+  </header>
+  <main id="reader">
+    <div class="note">Bấm biểu tượng extension hoặc Alt+Shift+M để bật/tắt. Cuộn, zoom và thay đổi kích thước cửa sổ để thử tracking.</div>
+    <img id="decoration" src="/panel.svg?id=icon&amp;width=32&amp;height=32" alt="icon trang thử nghiệm">
+    <div id="late-block"></div>
+    <img id="page-a" class="page" src="/panel.svg?id=A" width="1000" height="1600" alt="Trang truyện A">
+    <div id="insertion"></div>
+    <img id="page-b" class="page" src="/panel.svg?id=B" width="1000" height="1600" alt="Trang truyện B">
+    <section id="lazy-section">
+      <img id="page-lazy" class="page" src="/panel.svg?id=LAZY" loading="lazy" width="1000" height="1600" alt="Trang truyện lazy loading">
+      <img id="page-deferred" class="page" data-src="/panel.svg?id=DEFERRED" alt="Ảnh chờ website gán nguồn">
+    </section>
+  </main>
+</body>
+</html>

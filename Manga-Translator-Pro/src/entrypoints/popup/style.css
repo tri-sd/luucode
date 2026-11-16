@@ -1,0 +1,37 @@
+:root { font: 14px/1.5 Arial, "Segoe UI", sans-serif; color: #15334a; background: #f2f6f8; color-scheme: light; }
+* { box-sizing: border-box; }
+body { width: 390px; margin: 0; }
+header { background: #102d43; color: white; padding: 22px 22px 18px; }
+.eyebrow { font-size: 10px; letter-spacing: 1.7px; color: #a3e2d4; font-weight: bold; }
+h1 { margin: 8px 0 5px; font-size: 23px; }
+header p { color: #c1d7e3; font-size: 12px; margin: 0; }
+main { padding: 18px 22px 22px; }
+p { margin: 0 0 12px; }
+#config-summary { font-size: 12px; color: #4b687b; overflow-wrap: anywhere; }
+#image-summary { padding: 12px; background: white; border: 1px solid #d0dde5; border-radius: 7px; }
+button { border: 1px solid #b2c8d4; background: white; color: #173e58; padding: 10px 12px; border-radius: 6px; cursor: pointer; font: 600 13px Arial, sans-serif; }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible { outline: 3px solid #d89b31; outline-offset: 2px; }
+.actions { display: flex; gap: 9px; }
+#translate { flex: 1; background: #16634d; color: white; border-color: #16634d; }
+.tools { display: flex; gap: 7px; flex-wrap: wrap; margin: 12px 0; }
+.tools button { padding: 6px 8px; font-size: 11px; }
+#translation-status { font-size: 12px; color: #4b687b; margin-top: 15px; }
+[data-state=error] { color: #a12a35 !important; }
+h2 { font-size: 14px; margin: 18px 0 8px; }
+summary { cursor: pointer; padding: 8px 0; font-size: 12px; font-weight: bold; }
+#transcript article { padding: 10px; margin-bottom: 8px; background: white; border: 1px solid #d0dde5; border-radius: 5px; }
+#transcript article p { margin: 0 0 5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.source { color: #617788; font-size: 12px; }
+pre { font-size: 10px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: white; padding: 10px; }
+.capture-option { display: block; font-size: 12px; margin: 8px 0; }
+.capture-note { font-size: 11px; color: #4b687b; }
+#debug-summary { margin-top: 10px; font-size: 12px; }
+#debug-entries { max-height: 240px; overflow: auto; font-size: 11px; overflow-wrap: anywhere; }
+#debug-entries p { background: white; border: 1px solid #d0dde5; padding: 8px; border-radius: 5px; }
+
+body { max-height: 590px; overflow-y: auto; }
+#chapter-section { border:1px solid #c5d7df; border-radius:9px; padding:12px; margin-bottom:18px; background:#f9fcfd; }
+#enable-site { font-size:12px; padding:7px 9px; }
+#chapter-access { margin:9px 0; }
+#chapter-refresh { padding:5px 8px; font-size:11px; }

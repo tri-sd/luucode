@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="manifest.open_in_tab" content="true">
+    <title>Manga Translator Pro · Cấu hình Gemini và Tracking Lab</title>
+  </head>
+  <body>
+    <header>
+      <div class="eyebrow">MANGA TRANSLATOR PRO / GEMINI VISION</div>
+      <h1>Đọc truyện bằng tiếng Việt.</h1>
+      <p>Cấu hình Gemini để dịch ảnh đang xem hoặc thu thập và dịch toàn bộ chương. Phòng kiểm tra tracking bên dưới dùng vùng chữ giả lập, độc lập với API.</p>
+      <div class="actions">
+        <button id="open-settings" type="button">Cấu hình Gemini</button>
+        <button id="toggle" type="button">Bật vùng chữ giả lập</button>
+        <button id="shift" type="button" class="secondary">Thêm / bỏ khoảng trống</button>
+        <button id="append" type="button" class="secondary">Thêm ảnh mới</button>
+      </div>
+      <p id="status" role="status">Đang tắt · Bấm nút để bắt đầu</p>
+    </header>
+    <main id="demo-reader">
+      <details class="site-access-panel" aria-label="Tự nhận diện website truyện">
+        <summary>Nút Dịch truyện trên website</summary>
+        <p>Bật quyền một lần để tự phát hiện ảnh truyện khi truy cập website. Chỉ bấm Dịch AI/Dịch toàn bộ mới gửi ảnh tới Gemini; thu thập không gọi API.</p>
+        <button id="enable-websites" type="button">Bật tự nhận diện trên website</button>
+        <p id="website-access-status" role="status">Bạn cũng có thể chỉ bật cho website đang đọc bằng nút trong popup.</p>
+      </details>
+      <details id="settings-panel" class="settings-panel">
+        <summary>API key, model và ngôn ngữ</summary>
+        <form id="settings-form">
+          <label for="api-key">Gemini API key</label>
+          <input id="api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="Nhập Gemini API key của bạn">
+          <p class="help">Key được dùng trong extension. Mặc định chỉ giữ key trong phiên trình duyệt. Ảnh chỉ được gửi tới Gemini khi bạn bấm Dịch.</p>
+          <div class="form-actions"><button id="load-models" type="button">Tải danh sách model</button><button id="clear-key" type="button">Xóa key đã lưu</button></div>
+          <label for="model-select">Model Gemini</label>
+          <select id="model-select"><option value="">Chọn model sau khi tải danh sách</option></select>
+          <label for="model-manual">Hoặc nhập model ID</label>
+          <input id="model-manual" type="text" placeholder="gemini-… (model hỗ trợ ảnh và JSON)">
+          <label for="source-language">Ngôn ngữ nguồn</label>
+          <select id="source-language"><option value="auto">Tự nhận diện Anh / Nhật / Trung / Hàn</option><option value="en">Tiếng Anh</option><option value="ja">Tiếng Nhật</option><option value="zh">Tiếng Trung</option><option value="ko">Tiếng Hàn</option></select>
+          <label for="timeout">Timeout mỗi request (15–180 giây)</label>
+          <input id="timeout" type="number" min="15" max="180" step="1" value="90" required>
+          <label class="checkbox"><input id="remember-key" type="checkbox"> Nhớ key sau khi đóng trình duyệt (lưu cục bộ trên máy)</label>
+          <button id="save-settings" type="submit">Lưu cấu hình</button>
+          <p id="settings-status" role="status">Đang đọc cấu hình…</p>
+        </form>
+      </details>
+      <div class="hint">Tracking Lab dùng chữ giả lập để thử cuộn, zoom và resize. Để dịch thật trên website: bấm biểu tượng extension rồi chọn Dịch ảnh đang xem.</div>
+      <div id="demo-spacer"></div>
+      <img id="demo-a" class="comic" src="/demo/panel.svg?page=A" width="1000" height="1600" alt="Trang truyện thử nghiệm A">
+      <img id="demo-b" class="comic" src="/demo/panel.svg?page=B" width="1000" height="1600" loading="lazy" alt="Trang truyện thử nghiệm B">
+    </main>
+    <footer>Không thay đổi bố cục ảnh · Shadow DOM · Tọa độ theo ảnh gốc</footer>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

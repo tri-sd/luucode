@@ -1,0 +1,37 @@
+{
+  "name": "manga-translator-pro",
+  "description": "Manga Translator Pro — Gemini Vision manga translation",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "playwright test",
+    "fixtures": "node tests/fixtures/server.mjs",
+    "benchmark": "node tests/benchmark-report.mjs",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run test:integration"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.65.1",
+    "@types/chrome": "0.3.7",
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "eslint": "10.15.0",
+    "globals": "17.14.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.2",
+    "vitest": "5.1.0",
+    "wxt": "0.21.5"
+  }
+}

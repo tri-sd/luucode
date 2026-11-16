@@ -1,0 +1,96 @@
+{
+  "formatVersion": "mtp-benchmark-v1",
+  "generatedAt": "2026-11-16T04:07:45.974Z",
+  "dataset": {
+    "version": "1",
+    "images": 4,
+    "languages": [
+      "en",
+      "ja",
+      "zh",
+      "ko"
+    ],
+    "regions": 16,
+    "license": "Original synthetic fixture artwork and text created for Manga Translator Pro tests. No reference extension, manga scan, brand or proprietary asset is used.",
+    "representativeRealMangaAccuracy": false
+  },
+  "output": {
+    "provenance": {
+      "kind": "renderer-fixture",
+      "description": "Real Chromium discovery/geometry/font layout using known synthetic annotations and example Vietnamese strings. No OCR, Gemini or reference extension execution."
+    },
+    "metrics": {
+      "imageDiscoveryRecall": {
+        "status": "measured",
+        "value": {
+          "found": 4,
+          "expected": 4,
+          "recall": 1
+        },
+        "evidence": "renderer-fixture: Real Chromium discovery/geometry/font layout using known synthetic annotations and example Vietnamese strings. No OCR, Gemini or reference extension execution."
+      },
+      "textRegionDetectionRecall": {
+        "status": "unmeasured",
+        "value": null,
+        "reason": "No live provider/reference outputs supplied; fixture annotations are not detection results."
+      },
+      "ocrAccuracy": {
+        "status": "unmeasured",
+        "value": null,
+        "reason": "No live OCR sourceText supplied. Mock/rendered translations are not OCR evidence."
+      },
+      "translationQuality": {
+        "status": "unmeasured",
+        "value": null,
+        "reason": "Needs attributed human adequacy, fluency and terminology reviews on real output. Reference strings alone are not a quality score."
+      },
+      "regionPositionError": {
+        "status": "measured",
+        "value": {
+          "samples": 16,
+          "visibleSamples": 16,
+          "missingLayers": 0,
+          "maxErrorCssPx": 2.842170943040401e-14,
+          "meanErrorCssPx": 3.552713678800501e-15
+        },
+        "evidence": "renderer-fixture: Real Chromium discovery/geometry/font layout using known synthetic annotations and example Vietnamese strings. No OCR, Gemini or reference extension execution."
+      },
+      "textOverflowRate": {
+        "status": "measured",
+        "value": {
+          "samples": 16,
+          "rate": 0,
+          "unreadableSamples": 0
+        },
+        "evidence": "renderer-fixture: Real Chromium discovery/geometry/font layout using known synthetic annotations and example Vietnamese strings. No OCR, Gemini or reference extension execution."
+      },
+      "cacheHitRate": {
+        "status": "unmeasured",
+        "value": null,
+        "reason": "No cache lookup telemetry supplied."
+      },
+      "duplicateApiRequestCount": {
+        "status": "unmeasured",
+        "value": null,
+        "reason": "No content/profile/crop-scoped request telemetry supplied."
+      },
+      "memoryUsage": {
+        "status": "measured",
+        "value": {
+          "scope": "single page JavaScript heap sample; excludes decoded image/GPU/offscreen/process RAM",
+          "metadataBytes": 8246,
+          "jsHeapUsedBytes": 4663868,
+          "jsHeapTotalBytes": 9957376,
+          "peakProcessRam": "unmeasured; JS heap samples exclude decoded images/GPU/offscreen memory"
+        },
+        "evidence": "renderer-fixture: Real Chromium discovery/geometry/font layout using known synthetic annotations and example Vietnamese strings. No OCR, Gemini or reference extension execution."
+      },
+      "timeToTranslateChapter": {
+        "status": "unmeasured",
+        "value": null,
+        "reason": "No chapter start/end telemetry supplied."
+      }
+    }
+  },
+  "referenceComparison": "unmeasured: no observed reference-extension outputs supplied"
+}

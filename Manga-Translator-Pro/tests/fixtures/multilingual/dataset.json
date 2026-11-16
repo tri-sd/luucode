@@ -1,0 +1,560 @@
+{
+  "version": "1",
+  "description": "Original synthetic comic panels for EN, Japanese vertical text, simplified Chinese and Korean. Source strings and normalized region envelopes are annotated. They exercise discovery, typesetting and metric plumbing; they are not representative manga accuracy evidence.",
+  "license": "Original synthetic fixture artwork and text created for Manga Translator Pro tests. No reference extension, manga scan, brand or proprietary asset is used.",
+  "annotationPolicy": "Coordinates are normalized to the complete 800x1200 source. Polygons are known fixture envelopes. Vietnamese strings are illustrative test references drafted for this fixture, not human-reviewed translations or measured extension/provider results.",
+  "images": [
+    {
+      "id": "en",
+      "language": "en",
+      "file": "en.svg",
+      "width": 800,
+      "height": 1200,
+      "regions": [
+        {
+          "id": "en-narration",
+          "sourceText": "At dawn, the old bridge trembled.",
+          "translatedText": "Lúc bình minh, cây cầu cũ rung lên.",
+          "kind": "narration",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.075,
+            "y": 0.05,
+            "width": 0.85,
+            "height": 0.055
+          },
+          "polygon": [
+            {
+              "x": 0.075,
+              "y": 0.05
+            },
+            {
+              "x": 0.9249999999999999,
+              "y": 0.05
+            },
+            {
+              "x": 0.9249999999999999,
+              "y": 0.10500000000000001
+            },
+            {
+              "x": 0.075,
+              "y": 0.10500000000000001
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "en-dialogue",
+          "sourceText": "We can cross\nbefore sunrise.",
+          "translatedText": "Chúng ta có thể qua cầu trước khi mặt trời mọc.",
+          "kind": "dialogue",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.09,
+            "y": 0.2,
+            "width": 0.4,
+            "height": 0.2
+          },
+          "polygon": [
+            {
+              "x": 0.09,
+              "y": 0.2
+            },
+            {
+              "x": 0.49,
+              "y": 0.2
+            },
+            {
+              "x": 0.49,
+              "y": 0.4
+            },
+            {
+              "x": 0.09,
+              "y": 0.4
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "en-sfx",
+          "sourceText": "KRRK!",
+          "translatedText": "RẮC!",
+          "kind": "sfx",
+          "direction": "rotated",
+          "box": {
+            "x": 0.56,
+            "y": 0.36,
+            "width": 0.33,
+            "height": 0.11
+          },
+          "polygon": [
+            {
+              "x": 0.56,
+              "y": 0.36
+            },
+            {
+              "x": 0.8900000000000001,
+              "y": 0.36
+            },
+            {
+              "x": 0.8900000000000001,
+              "y": 0.47
+            },
+            {
+              "x": 0.56,
+              "y": 0.47
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "en-small",
+          "sourceText": "The river was rising.",
+          "translatedText": "Nước sông đang dâng.",
+          "kind": "narration",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.51,
+            "y": 0.79,
+            "width": 0.42,
+            "height": 0.065
+          },
+          "polygon": [
+            {
+              "x": 0.51,
+              "y": 0.79
+            },
+            {
+              "x": 0.9299999999999999,
+              "y": 0.79
+            },
+            {
+              "x": 0.9299999999999999,
+              "y": 0.855
+            },
+            {
+              "x": 0.51,
+              "y": 0.855
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        }
+      ]
+    },
+    {
+      "id": "ja",
+      "language": "ja",
+      "file": "ja.svg",
+      "width": 800,
+      "height": 1200,
+      "regions": [
+        {
+          "id": "ja-narration",
+          "sourceText": "夜明けの橋。",
+          "translatedText": "Cây cầu lúc bình minh.",
+          "kind": "narration",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.075,
+            "y": 0.05,
+            "width": 0.85,
+            "height": 0.055
+          },
+          "polygon": [
+            {
+              "x": 0.075,
+              "y": 0.05
+            },
+            {
+              "x": 0.9249999999999999,
+              "y": 0.05
+            },
+            {
+              "x": 0.9249999999999999,
+              "y": 0.10500000000000001
+            },
+            {
+              "x": 0.075,
+              "y": 0.10500000000000001
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "ja-dialogue",
+          "sourceText": "先に行こう。",
+          "translatedText": "Đi trước thôi.",
+          "kind": "dialogue",
+          "direction": "vertical",
+          "box": {
+            "x": 0.09,
+            "y": 0.2,
+            "width": 0.4,
+            "height": 0.2
+          },
+          "polygon": [
+            {
+              "x": 0.09,
+              "y": 0.2
+            },
+            {
+              "x": 0.49,
+              "y": 0.2
+            },
+            {
+              "x": 0.49,
+              "y": 0.4
+            },
+            {
+              "x": 0.09,
+              "y": 0.4
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "ja-sfx",
+          "sourceText": "ゴゴゴ",
+          "translatedText": "ẦM ẦM",
+          "kind": "sfx",
+          "direction": "rotated",
+          "box": {
+            "x": 0.56,
+            "y": 0.36,
+            "width": 0.33,
+            "height": 0.11
+          },
+          "polygon": [
+            {
+              "x": 0.56,
+              "y": 0.36
+            },
+            {
+              "x": 0.8900000000000001,
+              "y": 0.36
+            },
+            {
+              "x": 0.8900000000000001,
+              "y": 0.47
+            },
+            {
+              "x": 0.56,
+              "y": 0.47
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "ja-small",
+          "sourceText": "川の水が増えていた。",
+          "translatedText": "Nước sông đang dâng lên.",
+          "kind": "narration",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.51,
+            "y": 0.79,
+            "width": 0.42,
+            "height": 0.065
+          },
+          "polygon": [
+            {
+              "x": 0.51,
+              "y": 0.79
+            },
+            {
+              "x": 0.9299999999999999,
+              "y": 0.79
+            },
+            {
+              "x": 0.9299999999999999,
+              "y": 0.855
+            },
+            {
+              "x": 0.51,
+              "y": 0.855
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        }
+      ]
+    },
+    {
+      "id": "zh",
+      "language": "zh",
+      "file": "zh.svg",
+      "width": 800,
+      "height": 1200,
+      "regions": [
+        {
+          "id": "zh-narration",
+          "sourceText": "黎明时，桥在摇晃。",
+          "translatedText": "Lúc bình minh, cây cầu đang rung lắc.",
+          "kind": "narration",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.075,
+            "y": 0.05,
+            "width": 0.85,
+            "height": 0.055
+          },
+          "polygon": [
+            {
+              "x": 0.075,
+              "y": 0.05
+            },
+            {
+              "x": 0.9249999999999999,
+              "y": 0.05
+            },
+            {
+              "x": 0.9249999999999999,
+              "y": 0.10500000000000001
+            },
+            {
+              "x": 0.075,
+              "y": 0.10500000000000001
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "zh-dialogue",
+          "sourceText": "太阳升起前，\n我们可以过去。",
+          "translatedText": "Chúng ta có thể qua trước khi mặt trời mọc.",
+          "kind": "dialogue",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.09,
+            "y": 0.2,
+            "width": 0.4,
+            "height": 0.2
+          },
+          "polygon": [
+            {
+              "x": 0.09,
+              "y": 0.2
+            },
+            {
+              "x": 0.49,
+              "y": 0.2
+            },
+            {
+              "x": 0.49,
+              "y": 0.4
+            },
+            {
+              "x": 0.09,
+              "y": 0.4
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "zh-sfx",
+          "sourceText": "咔嚓",
+          "translatedText": "RẮC",
+          "kind": "sfx",
+          "direction": "rotated",
+          "box": {
+            "x": 0.56,
+            "y": 0.36,
+            "width": 0.33,
+            "height": 0.11
+          },
+          "polygon": [
+            {
+              "x": 0.56,
+              "y": 0.36
+            },
+            {
+              "x": 0.8900000000000001,
+              "y": 0.36
+            },
+            {
+              "x": 0.8900000000000001,
+              "y": 0.47
+            },
+            {
+              "x": 0.56,
+              "y": 0.47
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "zh-small",
+          "sourceText": "河水正在上涨。",
+          "translatedText": "Nước sông đang dâng.",
+          "kind": "narration",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.51,
+            "y": 0.79,
+            "width": 0.42,
+            "height": 0.065
+          },
+          "polygon": [
+            {
+              "x": 0.51,
+              "y": 0.79
+            },
+            {
+              "x": 0.9299999999999999,
+              "y": 0.79
+            },
+            {
+              "x": 0.9299999999999999,
+              "y": 0.855
+            },
+            {
+              "x": 0.51,
+              "y": 0.855
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        }
+      ]
+    },
+    {
+      "id": "ko",
+      "language": "ko",
+      "file": "ko.svg",
+      "width": 800,
+      "height": 1200,
+      "regions": [
+        {
+          "id": "ko-narration",
+          "sourceText": "새벽에 낡은 다리가 흔들렸다.",
+          "translatedText": "Lúc bình minh, cây cầu cũ rung lên.",
+          "kind": "narration",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.075,
+            "y": 0.05,
+            "width": 0.85,
+            "height": 0.055
+          },
+          "polygon": [
+            {
+              "x": 0.075,
+              "y": 0.05
+            },
+            {
+              "x": 0.9249999999999999,
+              "y": 0.05
+            },
+            {
+              "x": 0.9249999999999999,
+              "y": 0.10500000000000001
+            },
+            {
+              "x": 0.075,
+              "y": 0.10500000000000001
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "ko-dialogue",
+          "sourceText": "해가 뜨기 전에\n건널 수 있어.",
+          "translatedText": "Ta có thể qua trước khi mặt trời mọc.",
+          "kind": "dialogue",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.09,
+            "y": 0.2,
+            "width": 0.4,
+            "height": 0.2
+          },
+          "polygon": [
+            {
+              "x": 0.09,
+              "y": 0.2
+            },
+            {
+              "x": 0.49,
+              "y": 0.2
+            },
+            {
+              "x": 0.49,
+              "y": 0.4
+            },
+            {
+              "x": 0.09,
+              "y": 0.4
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "ko-sfx",
+          "sourceText": "우르릉!",
+          "translatedText": "ẦM ẦM!",
+          "kind": "sfx",
+          "direction": "rotated",
+          "box": {
+            "x": 0.56,
+            "y": 0.36,
+            "width": 0.33,
+            "height": 0.11
+          },
+          "polygon": [
+            {
+              "x": 0.56,
+              "y": 0.36
+            },
+            {
+              "x": 0.8900000000000001,
+              "y": 0.36
+            },
+            {
+              "x": 0.8900000000000001,
+              "y": 0.47
+            },
+            {
+              "x": 0.56,
+              "y": 0.47
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        },
+        {
+          "id": "ko-small",
+          "sourceText": "강물이 불어나고 있었다.",
+          "translatedText": "Nước sông đang dâng lên.",
+          "kind": "narration",
+          "direction": "horizontal",
+          "box": {
+            "x": 0.51,
+            "y": 0.79,
+            "width": 0.42,
+            "height": 0.065
+          },
+          "polygon": [
+            {
+              "x": 0.51,
+              "y": 0.79
+            },
+            {
+              "x": 0.9299999999999999,
+              "y": 0.79
+            },
+            {
+              "x": 0.9299999999999999,
+              "y": 0.855
+            },
+            {
+              "x": 0.51,
+              "y": 0.855
+            }
+          ],
+          "annotationNote": "Hand-authored synthetic region envelope; not model output or a calibrated detector polygon."
+        }
+      ]
+    }
+  ],
+  "translationReferences": {
+    "status": "unreviewed-fixture-examples",
+    "scoringPolicy": "Do not use these examples as evidence of real translation quality or reference-extension parity; human review is required."
+  }
+}
