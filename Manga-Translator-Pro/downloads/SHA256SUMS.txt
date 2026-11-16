@@ -1,0 +1,3 @@
+16467dd2d8e90514bec69add37eeb7ae0d275f1371bab8249210c12fd0628e2c  manga-translator-pro-0.5.0-source.zip
+268f9871da980c976f3f7dcfddf2f0332329072430e404f3dff8e35935f37062  manga-translator-pro-0.5.0-unpacked.zip
+668cbad753d6b0dca628ae776404380dd94d7f64b71ce2676072c9cb05fc802f  manga-translator-pro-0.5.0-report.zip
