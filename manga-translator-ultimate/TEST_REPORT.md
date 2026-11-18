@@ -1,7 +1,10 @@
 # Kiểm thử hồi quy — 18/11/2026
 
+## Bản 1.5
 
+**24 bài đạt** trên Linux với Chromium và Qwen3 local. Hai mẫu tích hợp Anh và Nhật đều kết xuất đủ 3/3 vùng. Ca hồi quy mới dựng ba cụm chữ trên một nền thoại viền gai, kiểm tra kết quả OCR, cả ba bản dịch và nét tranh giữa các cụm. Các ca còn lại kiểm tra từ ngắt qua dòng, dấu gạch nối thật, ý nghĩa của từng cụm và các thao tác cuộn, cache, thu thập ảnh rồi dịch tuần tự.
 
+Phép thử riêng trên ảnh gốc chương 466 kiểm tra cả OCR, Qwen3 và kết xuất. Trang 7 đạt 6/6 cụm ở phần viền gai, trang 4 đạt 2/2 ô dính nhau và trang 1 đạt 1/1 ô báo lỗi. Một cụm chữ viền trắng trên nền tranh ở đầu trang 7 vẫn giữ nguyên. Xem phạm vi và cách cập nhật trong [ghi chú bản 1.5](docs/UPDATE-1.5.md).
 
 ## Bản 1.4
 

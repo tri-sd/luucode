@@ -278,3 +278,89 @@ def test_rescans_leaking_balloon_and_repairs_wrapped_words(monkeypatch):
     assert count == 1
     assert np.array_equal(original[:, :50], output[:, :50])
     assert join_english_lines(['SULLIVAN-', 'SAMA']) == 'SULLIVAN-SAMA'
+
+
+def test_joined_spiky_balloon_keeps_three_dialogue_blocks(monkeypatch):
+    from PIL import ImageDraw
+    from manga_engine.ocr import Ocr
+    from manga_engine.render import font
+
+    canvas = Image.new('RGB', (925,500), (44,44,44))
+    draw = ImageDraw.Draw(canvas)
+    centers = [(155,195),(423,227),(698,166)]
+    for x,y in centers:
+        points = []
+        for index in range(48):
+            angle = index*2*np.pi/48
+            spike = 1 if index%2 == 0 else .82
+            points.append((round(x+154*spike*np.cos(angle)),round(y+125*spike*np.sin(angle))))
+        draw.polygon(points,fill='white')
+    draw.polygon([(200,181),(654,142),(650,198),(204,216)], fill='white')
+    artwork = np.asarray(canvas).copy()
+
+    evidence = []
+    blocks = [
+        ("SULLIVAN-", "SAMA NEEDS", "HELP."),
+        ("IF I LOSE MY", "AUTHORITY,", "I'LL BE WEAKER."),
+        ("WE'RE ALSO", "QUESTION-", "ING THE CROWNS."),
+    ]
+    style = font('italic',22)
+    for (x,y), lines in zip(centers,blocks):
+        for index,line in enumerate(lines):
+            position = (x,y-27+27*index)
+            l,t,r,b = draw.textbbox(position,line,font=style,anchor='mm')
+            evidence.append(np.array([(l-3,t-2),(r+3,t-2),(r+3,b+2),(l-3,b+2)], dtype=np.int32))
+            draw.text(position,line,fill='black',font=style,anchor='mm')
+    original = np.asarray(canvas)
+    ocr = Ocr()
+    monkeypatch.setattr(ocr,'detect',lambda *args: list(reversed(evidence)))
+    regions = sorted(ocr.regions(original,Settings(language='en'),lambda:None),key=lambda r:r.box[0])
+    assert len(regions) == 3
+    assert [r.source for r in regions] == [
+        "SULLIVAN-SAMA NEEDS HELP.",
+        "IF I LOSE MY AUTHORITY, I'LL BE WEAKER.",
+        "WE'RE ALSO QUESTIONING THE CROWNS.",
+    ]
+    for region, text in zip(regions, [
+            'Ngài Sullivan cần được giúp đỡ.', 'Nếu mất quyền hạn, tôi sẽ càng yếu thế.',
+            'Chúng tôi cũng đang thẩm vấn các vị Vương Miện.']):
+        assert region.balloon_outline and not region.issue
+        region.text = text
+    shifted, rendered = render(original,regions,Settings(language='en',font_scale=1.2),lambda:None)
+    assert rendered == 3
+    outside = artwork[:,:,0] == 44
+    assert np.array_equal(shifted[outside],original[outside])
+
+
+def test_source_wrap_preserves_honorifics_and_true_hyphens():
+    from manga_engine.ocr import join_english_lines, repair_letter_confusions
+
+    assert join_english_lines(["WE'RE QUESTION –", "ING THE CROWNS."]) == "WE'RE QUESTIONING THE CROWNS."
+    assert join_english_lines(["WE'RE QUESTION", "ING THE CROWNS."]) == "WE'RE QUESTIONING THE CROWNS."
+    assert join_english_lines(["SULLIVAN ‑", "SAMA NEEDS HELP."]) == "SULLIVAN-SAMA NEEDS HELP."
+    assert join_english_lines(["THE NEXT-IN-", "COMMAND WILL EX-", "PLAIN."]) == "THE NEXT-IN-COMMAND WILL EXPLAIN."
+    assert join_english_lines(["THERE ARE", "TWO SHIPS."]) == "THERE ARE TWO SHIPS."
+    assert repair_letter_confusions("T'LL BE MORE POWERLESS 10 HELP.") == "I'LL BE MORE POWERLESS TO HELP."
+    assert repair_letter_confusions("THE 13 CROWNS NEED 10 PEOPLE.") == "THE 13 CROWNS NEED 10 PEOPLE."
+    assert repair_letter_confusions("WAS MADE BY BAAL AND 1.") == "WAS MADE BY BAAL AND I."
+
+
+def test_translation_retains_meaning_in_adjacent_clauses():
+    items = [region('r1','Besides...'),
+             region('r2','Sullivan-sama needs folks on his side.'),
+             region('r3',"I'll be even more powerless to help him than I am now.")]
+    wrong = {"translations": [
+        {'id':'r1','text':'Mà chỉ thế thôi!'},
+        {'id':'r2','text':'Sullivan-sama sẽ chẳng còn ai đứng về phía mình.'},
+        {'id':'r3','text':'Tôi sẽ càng bất lực hơn bây giờ.'},
+    ]}
+    accepted, rejected = translator.validate(json.dumps(wrong), items, {})
+    assert not accepted and set(rejected) == {'r1','r2','r3'}
+    correct = {"translations": [
+        {'id':'r1','text':'Hơn nữa…'},
+        {'id':'r2','text':'Ngài Sullivan cần người đứng về phía mình.'},
+        {'id':'r3','text':'Tôi sẽ càng bất lực hơn khi muốn giúp anh ấy.'},
+    ]}
+    accepted, rejected = translator.validate(json.dumps(correct), items, {})
+    assert set(accepted) == {'r1','r2','r3'} and not rejected
+    assert translator.dialogue_hint(region(text='No one needs help.'), 'Không ai cần giúp.') is None

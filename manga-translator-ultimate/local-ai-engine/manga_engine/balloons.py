@@ -100,6 +100,106 @@ def group_light_balloons(gray, boxes, *, separate_leaks=False):
     return result
 
 
+def _missing_line_bridge(ink, box, other, height):
+    x,y,r,b = box
+    left,top,right,bottom = other
+    gap = ink[b:top, max(0,x,left):min(r,right)]
+    if gap.size == 0:
+        return False
+    occupied = np.count_nonzero(gap,axis=1) >= 2
+    rows = np.flatnonzero(occupied)
+    return rows.size > 0 and np.max(np.diff(np.r_[-1, rows, len(occupied)])) <= 1.2*height
+
+
+def text_blocks(boxes, ink=None):
+    """Group printed fragments into lines and vertically aligned text blocks."""
+    lines = []
+    for index in sorted(range(len(boxes)), key=lambda i: (boxes[i][1], boxes[i][0])):
+        x, y, r, b = boxes[index]
+        for line in lines:
+            left, top, right, bottom, members = line
+            height = min(b-y, bottom-top)
+            overlap_y = min(b, bottom)-max(y, top)
+            gap_x = max(x-right, left-r, 0)
+            if overlap_y >= .57*height and gap_x <= .45*height:
+                line[:] = [min(x,left), min(y,top), max(r,right), max(b,bottom), [*members, index]]
+                break
+        else:
+            lines.append([x, y, r, b, [index]])
+
+    blocks = []
+    for left, top, right, bottom, members in sorted(lines, key=lambda line: (line[1], line[0])):
+        best, best_score = None, float("inf")
+        for block in blocks:
+            x, y, r, b, _ = block[-1]
+            height = max(b-y, bottom-top)
+            leading = top-b
+            overlap_x = min(r,right)-max(x,left)
+            if leading < -.28*height or overlap_x < .55*min(r-x,right-left):
+                continue
+            if leading > 1.2*height and (ink is None or not _missing_line_bridge(
+                    ink,(x,y,r,b),(left,top,right,bottom),height)):
+                continue
+            offset = abs((left+right)-(x+r))/2
+            score = max(0,leading) + .25*offset
+            if score < best_score:
+                best, best_score = block, score
+        line = (left, top, right, bottom, members)
+        if best is None:
+            blocks.append([line])
+        else:
+            best.append(line)
+    return [[member for *_, members in block for member in members] for block in blocks]
+
+
+def split_connected_balloon(gray, bubble, outline, boxes):
+    """Partition a connected light interior when the text forms separate blocks."""
+    x, y, right, bottom = bubble
+    shape = (bottom-y, right-x)
+    local_boxes = [(a-x,t-y,r-x,b-y) for a,t,r,b in boxes]
+    if len(text_blocks(local_boxes)) < 2:
+        return []
+    interior = raster(np.asarray(outline)-[x,y],shape)
+    ink = (gray < 180) & (interior != 0)
+    blocks = text_blocks(local_boxes,ink)
+    if not 2 <= len(blocks) <= 12:
+        return []
+    # Assign white space to its nearest text block. The actual detected lines
+    # are the seeds, so the partition never depends on OCR word spelling.
+    distance = np.full(shape,np.inf,dtype=np.float32)
+    owner = np.zeros(shape,dtype=np.uint8)
+    for label, block in enumerate(blocks,1):
+        seeds = np.ones(shape,dtype=np.uint8)
+        for i in block:
+            l,t,r,b = boxes[i]
+            seeds[max(0,t-y):min(shape[0],b-y), max(0,l-x):min(shape[1],r-x)] = 0
+        values = cv2.distanceTransform(seeds,cv2.DIST_L2,cv2.DIST_MASK_3)
+        closer = values < distance
+        distance[closer] = values[closer]
+        owner[closer] = label
+
+    result = []
+    for label, block in enumerate(blocks,1):
+        area = ((owner == label) & (interior != 0)).astype(np.uint8)
+        contours, _ = cv2.findContours(area,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return []
+        contour = max(contours,key=cv2.contourArea)
+        polygon = cv2.approxPolyDP(contour,.55,True).reshape(-1,2)
+        if len(polygon) < 4:
+            return []
+        l,t,w,h = cv2.boundingRect(contour)
+        if min(w,h) < 18:
+            return []
+        for i in block:
+            a,c,r,b = boxes[i]
+            center = (float((a+r)/2-x), float((c+b)/2-y))
+            if cv2.pointPolygonTest(polygon,center,False) < 0:
+                return []
+        result.append(((x+l,y+t,x+l+w,y+t+h),polygon+[x,y],block))
+    return result
+
+
 def light_ink(patch, inside):
     values = patch[inside != 0]
     if not values.size:

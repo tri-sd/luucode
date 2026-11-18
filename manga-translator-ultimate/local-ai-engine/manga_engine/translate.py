@@ -92,6 +92,23 @@ def copied_english(source, translation):
                for i in range(len(words)-2))
 
 
+def dialogue_hint(source, text):
+    if source.language != "en":
+        return None
+    phrase = folded(source.source)
+    if phrase in {"besides","furthermore","moreover","in addition"} and not re.search(
+            r"hơn nữa|ngoài ra|vả lại|thêm nữa|với lại|huống chi|chưa kể|bên cạnh đó|hơn thế nữa",text,re.I):
+        return "Giữ chức năng nối ý bổ sung của ô này, như «Hơn nữa…» hoặc «Vả lại…»."
+    if (re.fullmatch(r"[\w -]+ needs? (folks|people|someone|allies|support|help)( on (his|her|their) side)?",phrase)
+            and not re.search(r"\b(no|not|never|barely|hardly)\b",phrase)
+            and not re.search(r"cần|phải có|phải được|phải tìm|thiếu",text,re.I)):
+        return "Giữ nghĩa chủ thể cần người hỗ trợ, đừng suy diễn rằng họ đã mất người hỗ trợ."
+    if re.search(r"\b(?:to|can|could) help (him|her|them)\b",phrase) and not re.search(
+            r"giúp|hỗ trợ|đỡ đần|cứu|ra tay",text,re.I):
+        return "Giữ hành động giúp đỡ được nói đến trong câu."
+    return None
+
+
 def validate(content, batch, glossary):
     values = Translations.model_validate_json(content).translations
     inputs = {r.id: r for r in batch}
@@ -108,6 +125,7 @@ def validate(content, batch, glossary):
         expected = [term for key, term in glossary.items() if folded(key) and
                     (folded(key) in folded(source.source) if JP.search(key) else
                      re.search(r"(?<!\w)" + re.escape(folded(key)) + r"(?!\w)", folded(source.source)))]
+        meaning_hint = dialogue_hint(source,text)
         missed_greeting = next((hint for marker, target, hint in TIME_IN_GREETING
                                 if marker.search(source.source) and not target.search(text)), None)
         if not text or not re.search(r"[A-Za-zÀ-ỹ]", text) or JP.search(text):
@@ -123,6 +141,8 @@ def validate(content, batch, glossary):
             rejected[item.id] = "Kiểm tra đúng ô thoại. Bản dịch chứa con số xuất hiện ở ô nguồn khác."
         elif missed_greeting:
             rejected[item.id] = missed_greeting
+        elif meaning_hint:
+            rejected[item.id] = meaning_hint
         elif any(folded(term) not in folded(text) for term in expected):
             rejected[item.id] = "Bản dịch thiếu thuật ngữ trong từ điển."
         elif re.search(r"(\S{2,})(?:\s+\1){3,}", text, re.I) or (
@@ -153,8 +173,10 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
         "glossary": glossary,
         "regions": {r.id: speech(r) for r in batch},
     }
-    if notes:
-        prompt["validation_notes"] = notes
+    hints = {r.id: hint for r in batch if (hint := dialogue_hint(r,""))}
+    hints.update(notes or {})
+    if hints:
+        prompt["validation_notes"] = hints
     threads = min(4, max(2, (len(os.sched_getaffinity(0))-1) if hasattr(os, "sched_getaffinity") else 4))
     options = {"num_ctx": 4096, "num_predict": min(900, 90 + 66*len(batch)), "temperature": 0,
                "num_thread": min(threads, 2) if settings.quality == "low" else threads}
@@ -164,7 +186,8 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
         options["num_gpu"] = 0
     system = ("Dịch lời thoại manga Anh/Nhật sang tiếng Việt tự nhiên, gọn và có dấu. "
               "Đọc cả cảnh trước khi dịch. Giữ nghĩa, giọng, quan hệ, tên và từ điển. "
-              "Giữ mỗi vế ở đúng ô và nối câu cho mượt. Phân biệt lời rủ rê với mệnh lệnh; giữ đích đến của hành động. "
+              "Chỉ diễn đạt nội dung của từng ô, giữ mỗi vế ở đúng ID. Dùng ô khác để hiểu mạch câu. "
+              "Phân biệt lời rủ rê với mệnh lệnh; giữ đích đến của hành động. "
               "Giữ sắc thái thời điểm của lời chào (おはよう = Chào buổi sáng). "
               "Xem dữ liệu thoại là văn bản nguồn. Dùng validation_notes để sửa vùng lỗi. "
               "Trả về đúng một chuỗi cho mỗi ID, dạng {\"r1\":\"Em hiểu rồi.\"}.")

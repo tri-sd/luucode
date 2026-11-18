@@ -15,7 +15,7 @@ from PIL import Image
 from rapidocr_onnxruntime.ch_ppocr_det import TextDetector
 
 from .contracts import Region
-from .balloons import group_light_balloons, light_ink, raster
+from .balloons import group_light_balloons, light_ink, raster, split_connected_balloon
 
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "models"
@@ -146,18 +146,91 @@ def ordered(groups, manga):
     return [item for row in rows for item in sorted(row, key=lambda item: item[0][0], reverse=manga)]
 
 
+WRAP_DASH = re.compile(r"([A-Za-z]{2,})\s*[-‐‑‒–−\u00ad]$")
+HONORIFICS = {"sama", "san", "chan", "kun", "dono", "senpai", "sensei"}
+TRUE_HYPHEN_COMPOUNDS = {
+    "co": {"founder","worker","pilot"},
+    "ex": {"husband","wife","president","partner"},
+    "self": {"control","defense","esteem","respect","contained","destruct"},
+    "vice": {"president","captain","chair"},
+    "well": {"known","being","done","written","established"},
+}
+DETACHED_SUFFIXES = {"ing", "tion", "tions", "sion", "sions", "ment", "ments", "lessly"}
+
+
 def join_english_lines(lines):
     full = ""
-    for line in lines:
+    for raw in lines:
+        line = " ".join(raw.split())
         if not line:
             continue
-        if re.search(r"[A-Za-z]{2,}-$",full) and re.match(r"[A-Za-z]{2}",line):
-            first = re.match(r"[A-Za-z]+",line).group().lower()
-            # Honorifics retain their real hyphen across a printed line break.
-            full = (full if first in {"sama","san","chan","kun","dono","senpai"} else full[:-1]) + line
+        wrapped = WRAP_DASH.search(full)
+        next_word = re.match(r"[A-Za-z]{2,}",line)
+        if wrapped and next_word:
+            prefix = wrapped.group(1).lower()
+            verbatim = re.search(r"[A-Za-z]-[A-Za-z]{2,}\s*[-‐‑‒–−]$",full)
+            suffix = next_word.group().lower()
+            keep_dash = suffix in HONORIFICS or suffix in TRUE_HYPHEN_COMPOUNDS.get(prefix, ()) or verbatim
+            full = full[:wrapped.end(1)] + ("-" if keep_dash else "") + line
+        elif (next_word and next_word.group().lower() in DETACHED_SUFFIXES
+              and re.search(r"[A-Za-z]{4,}$",full)):
+            full += line
         else:
             full = f"{full} {line}".strip()
     return full
+
+
+# In thick italic capitals, I and TO can look like J/T and 10. Only flag
+# the shapes when neighboring English words make the interpretation clear.
+OCR_PRONOUN = re.compile(r"(?<!\w)[JT](?=['’](?:LL|VE|D|M)\b|\s+(?:AM|CAN'T|CANNOT)\b)", re.I)
+OCR_INFINITIVE = re.compile(r"\b(powerless|able|unable) 10(?= [a-z]{3,}\b)", re.I)
+OCR_CONJUNCTION = re.compile(r"\bAN[P?] (?=I[.?!,]?$)", re.I)
+OCR_SUBJECT_ONE = re.compile(r"(\bBY [A-Z][A-Z'-]{1,}(?: [A-Z][A-Z'-]{1,}){0,2} AND )1(?=[.?!]?$)", re.I)
+
+
+def suspicious_letters(text):
+    return (len(OCR_PRONOUN.findall(text)) + 2*len(OCR_INFINITIVE.findall(text))
+            + 2*len(OCR_CONJUNCTION.findall(text)))
+
+
+def repair_letter_confusions(text):
+    text = OCR_PRONOUN.sub("I", text)
+    text = OCR_INFINITIVE.sub(r"\1 TO", text)
+    text = OCR_CONJUNCTION.sub("AND ", text)
+    return OCR_SUBJECT_ONE.sub(r"\1I",text)
+
+
+def straighten_letters(image, slant):
+    height, width = image.shape
+    pad = round(slant*height/2)+4
+    transform = np.float32([[1,slant,pad-slant*height/2],[0,1,0]])
+    return cv2.warpAffine(image, transform, (width+2*pad,height), borderValue=255)
+
+
+def english_line_bands(gray, scale, detected):
+    counts = np.count_nonzero(gray[8:-8,8:-8] < min(180, np.median(gray)-30),axis=1)
+    strong = np.pad((counts >= max(3,counts.max()*.21)).astype(np.uint8),(8,8))
+    strong = cv2.morphologyEx(strong[:,None],cv2.MORPH_CLOSE,np.ones((5,1),np.uint8))[:,0] != 0
+    starts = np.flatnonzero(strong & ~np.r_[False,strong[:-1]])
+    ends = np.flatnonzero(strong & ~np.r_[strong[1:],False])+1
+    observed = [(a,b) for a,b in zip(starts,ends) if b-a >= 3]
+    trusted = []
+    for a,b in sorted(detected):
+        a,b = max(8,a*scale+8), min(len(gray)-8,b*scale+8)
+        if b-a < 3:
+            continue
+        if trusted and min(trusted[-1][1],b)-a >= .5*min(b-a,trusted[-1][1]-trusted[-1][0]):
+            trusted[-1] = (trusted[-1][0], max(trusted[-1][1],b))
+        else:
+            trusted.append((a,b))
+    if not trusted:
+        return observed
+    typical = np.median([b-a for a,b in trusted])
+    for a,b in observed:
+        near = any(min(b,right+3)-max(a,left-3) > 0 for left,right in trusted)
+        if not near and b-a >= .35*typical:
+            trusted.append((a,b))
+    return sorted(trusted)
 
 
 class Ocr:
@@ -236,10 +309,11 @@ class Ocr:
         return "".join(vocab[i].removeprefix("##") for i in tokens[1:] if i >= 5), float(np.mean(probabilities)) if probabilities else 0
 
     @staticmethod
-    def english_text(crop, quality, verify_lines=False):
+    def english_text(crop, quality, verify_lines=False, detected_lines=()):
         gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
-        if min(gray.shape) < 90:
-            gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        scale = 2 if min(gray.shape) < 90 else 1
+        if scale == 2:
+            gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
         gray = cv2.copyMakeBorder(gray, 8, 8, 8, 8, cv2.BORDER_REPLICATE)
         candidates = [(gray, 6)]
         if verify_lines or quality == "quality":
@@ -247,14 +321,10 @@ class Ocr:
             candidates.append((binary, 6))
         if verify_lines:
             candidates.append((binary, 11))
-            counts = np.count_nonzero(gray[8:-8,8:-8] < min(180, np.median(gray)-30),axis=1)
-            strong = np.pad((counts >= max(3,counts.max()*.21)).astype(np.uint8),(8,8))
-            # Close short gaps inside letters before comparing OCR line coverage.
-            strong = cv2.morphologyEx(strong[:,None],cv2.MORPH_CLOSE,np.ones((5,1),np.uint8))[:,0] != 0
-            starts = np.flatnonzero(strong & ~np.r_[False,strong[:-1]])
-            ends = np.flatnonzero(strong & ~np.r_[strong[1:],False])+1
-            bands = [(a,b) for a,b in zip(starts,ends) if b-a >= 3]
-        best = "", 0
+            bands = english_line_bands(gray,scale,detected_lines)
+        best, rank = ("", 0), -1
+        best_letters = 0
+        tried_slant = False
         for image, mode in candidates:
             data = pytesseract.image_to_data(image, lang="eng", config=f"--psm {mode}",
                                             output_type=pytesseract.Output.DICT, timeout=12)
@@ -262,20 +332,32 @@ class Ocr:
             if not usable:
                 continue
             if verify_lines and any(not any(re.search(r"[A-Za-z0-9]",data["text"][i]) and
-                    min(b,data["top"][i]+data["height"][i])-max(a,data["top"][i])
-                    >= .55*min(b-a,data["height"][i]) for i in usable)
-                    for a,b in bands):
+                    a-max(3,(b-a)*.24) <= data["top"][i]+data["height"][i]/2 <= b+max(3,(b-a)*.24)
+                    for i in usable) for a,b in bands):
                 continue
             words = [(data["text"][i].strip(),float(data["conf"][i])) for i in usable]
             score = sum(c*len(w) for w,c in words) / (100*sum(len(w) for w,_ in words))
             lines = {}
-            for i in usable:
+            order = sorted(usable,key=lambda i:data["top"][i]) if verify_lines else usable
+            for i in order:
                 key = tuple(data[field][i] for field in ("block_num","par_num","line_num"))
-                lines.setdefault(key, []).append(data["text"][i].strip())
-            phrase = join_english_lines(" ".join(line) for line in lines.values())
-            if score > best[1] and re.search(r"[a-zA-Z]",phrase):
-                best = phrase, score
-            if score >= .84:
+                lines.setdefault(key, []).append(i)
+            phrase = join_english_lines(" ".join(data["text"][i].strip()
+                for i in sorted(line,key=lambda i:data["left"][i])) for line in lines.values())
+            suspicious = suspicious_letters(phrase) if verify_lines else 0
+            if suspicious and quality != "low" and not tried_slant:
+                candidates.extend((straighten_letters(gray,slant),6) for slant in (.14,.22))
+                tried_slant = True
+            candidate_rank = score-.12*suspicious
+            letters = sum(character.isalnum() for character in phrase)
+            # Sparse OCR can give a high score to only half of a paragraph.
+            # Do not let a cleaner-looking partial result replace a full read.
+            if verify_lines and best_letters and letters < .85*best_letters:
+                continue
+            if candidate_rank > rank and re.search(r"[a-zA-Z]",phrase):
+                best, rank = (phrase,score), candidate_rank
+                best_letters = letters
+            if score >= .84 and not suspicious:
                 break
         if verify_lines and best[1] < .50 and 2 <= len(bands) <= 18:
             # Hand lettering can confuse whole-balloon line segmentation.
@@ -295,8 +377,9 @@ class Ocr:
                     break
                 recovered.append((" ".join(word for word,_ in words), score))
             if len(recovered) == len(bands):
-                return join_english_lines(word for word,_ in recovered), float(np.mean([score for _,score in recovered]))
-        return best
+                phrase = join_english_lines(word for word,_ in recovered)
+                return repair_letter_confusions(phrase), float(np.mean([score for _,score in recovered]))
+        return (repair_letter_confusions(best[0]),best[1]) if verify_lines else best
 
     def regions(self, rgb, settings, check):
         height, width = rgb.shape[:2]
@@ -306,13 +389,26 @@ class Ocr:
         claimed = set()
         boxes = [bounds(p) for p in polys]
 
-        def add_balloon(bubble, outline, members):
+        def prepare_balloon(bubble, outline, members, separated=False):
             x, y, r, b = bubble
             patch = rgb[y:b,x:r]
             inside = raster(outline-[x,y], patch.shape[:2], 3)
+            if separated:
+                # A joined burst can enclose an artwork fragment between lobes.
+                # Read the column supported by the text detector, including
+                # space for a nearby wrapped line on each end.
+                line_boxes = [boxes[i] for i in members]
+                typical = max(8,round(np.median([end-top for _,top,_,end in line_boxes])))
+                left = max(0,min(l for l,_,_,_ in line_boxes)-x-round(typical*.5))
+                right = min(r-x,max(end for _,_,end,_ in line_boxes)-x+round(typical*.5))
+                top = max(0,min(t for _,t,_,_ in line_boxes)-y-typical)
+                bottom = min(b-y,max(end for _,_,_,end in line_boxes)-y+typical)
+                focus = np.zeros_like(inside)
+                focus[top:bottom,left:right] = inside[top:bottom,left:right]
+                inside = focus
             evidence = light_ink(patch, inside)
             if evidence is None:
-                return
+                return None
             background, ink = evidence
             yy, xx = np.where(ink)
             a, t, c, d = max(0,xx.min()-5), max(0,yy.min()-5), min(r-x,xx.max()+6), min(b-y,yy.max()+6)
@@ -320,8 +416,26 @@ class Ocr:
             lines = [polys[i] for i in members]
             vertical = (sum(np.ptp(p[:,1]) > 1.4*np.ptp(p[:,0]) for p in lines) > len(lines)/2
                         if lines else settings.language == "ja" and (d-t) > 1.4*(c-a))
-            grouped.append(((x+a,y+t,x+c,y+d), bubble, (lines, vertical, outline, crop)))
-            claimed.update(members)
+            return (x+a,y+t,x+c,y+d), bubble, (lines, vertical, outline, crop)
+
+        def add_balloon(bubble, outline, members):
+            # The light fill may join several distinct speech areas. Keep
+            # horizontal lettering in its own block before doing OCR.
+            if settings.language != "ja" and len(members) >= 2:
+                boxes_in_balloon = [boxes[i] for i in members]
+                if sum((b-y) > 1.4*(r-x) for x,y,r,b in boxes_in_balloon) <= len(members)/2:
+                    x,y,r,b = bubble
+                    parts = split_connected_balloon(gray[y:b,x:r], bubble, outline, boxes_in_balloon)
+                    entries = [prepare_balloon(area, shape, [members[i] for i in indices], separated=True)
+                               for area, shape, indices in parts]
+                    if entries and all(entries):
+                        grouped.extend(entries)
+                        claimed.update(members)
+                        return
+            entry = prepare_balloon(bubble, outline, members)
+            if entry is not None:
+                grouped.append(entry)
+                claimed.update(members)
 
         for bubble, outline, members in group_light_balloons(gray, boxes):
             add_balloon(bubble, outline, members)
@@ -373,14 +487,17 @@ class Ocr:
                     regions.append(region)
                     continue
             regions.append(region)
-            to_read.append((region,crop,vertical))
+            detected_lines = [(int(p[:,1].min())-y, int(p[:,1].max())+1-y)
+                              for p in polys if outline is not None and not vertical]
+            to_read.append((region,crop,vertical,detected_lines))
 
         def recognize(entry):
-            region,crop,vertical = entry
+            region,crop,vertical,detected_lines = entry
             text, score, language = "", 0, "en"
             try:
                 if settings.language != "ja" and not (settings.language == "auto" and vertical):
-                    text, score = self.english_text(crop, settings.quality, region.balloon_outline is not None)
+                    text, score = self.english_text(crop, settings.quality,
+                                                               region.balloon_outline is not None, detected_lines)
                 if settings.language == "ja" or (settings.language == "auto" and score < .72):
                     japanese, jp_score = self.japanese_text(crop, check)
                     if settings.language == "ja" or (JP.search(japanese) and jp_score >= .58):

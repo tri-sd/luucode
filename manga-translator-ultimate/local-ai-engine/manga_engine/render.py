@@ -33,7 +33,13 @@ def erase_patch(rgb, region, aggressive):
         if evidence is None:
             return None
         bg, ink = evidence
-        mask = cv2.bitwise_and(cv2.dilate(ink.astype(np.uint8)*255,np.ones((3,3),np.uint8)),inside)
+        left, top, right, bottom = pixels(region.box,width,height)
+        ink_bounds = np.zeros_like(inside)
+        ink_bounds[max(0,top-y):min(b-y,bottom-y), max(0,left-x):min(r-x,right-x)] = 255
+        text_ink = cv2.bitwise_and(ink.astype(np.uint8)*255,ink_bounds)
+        mask = cv2.bitwise_and(cv2.dilate(text_ink,np.ones((3,3),np.uint8)),inside)
+        if not mask.any():
+            return None
         repaired = patch.copy()
         repaired[mask != 0] = np.rint(bg).astype(np.uint8)
         return (x,y,r,b), repaired, bg, mask
@@ -86,6 +92,20 @@ def erase_patch(rgb, region, aggressive):
     return (x, y, r, s), repaired, bg, clean
 
 
+def center_lines(face, lines, rect, line_height):
+    x, y, r, b = rect
+    boxes = [face.getbbox(line, anchor="mm") for line in lines]
+    if any(right-left > r-x for left, _, right, _ in boxes):
+        return None
+    ink_top = min(box[1]+i*line_height for i,box in enumerate(boxes))
+    ink_bottom = max(box[3]+i*line_height for i,box in enumerate(boxes))
+    if ink_bottom-ink_top > b-y:
+        return None
+    baseline = (y+b-ink_top-ink_bottom)//2
+    return [((x+r-box[0]-box[2])//2, baseline+i*line_height, line)
+            for i,(box,line) in enumerate(zip(boxes,lines))]
+
+
 def layout(text, rect, style, scale, ellipse):
     x, y, r, b = rect
     width, height = r-x, b-y
@@ -119,10 +139,11 @@ def layout(text, rect, style, scale, ellipse):
             else:
                 lines.append(line)
                 if len(lines)*line_height <= height:
-                    top = y+(height-len(lines)*line_height)//2
-                    best = face, [(round((x+r)/2),top+(i+.5)*line_height,text) for i,text in enumerate(lines)]
-                    min_size = size+1
-                    continue
+                    positioned = center_lines(face,lines,rect,line_height)
+                    if positioned:
+                        best = face, positioned
+                        min_size = size+1
+                        continue
             max_size = size-1
         return best
     for size in range(max_size, min_size-1, -1):
@@ -146,7 +167,9 @@ def layout(text, rect, style, scale, ellipse):
                 lines.append(" ".join(words[start:end]))
                 start = end
             if start == len(words):
-                return face, [(round((x+r)/2), top+(i+.5)*line_height, line) for i, line in enumerate(lines)]
+                positioned = center_lines(face,lines,rect,line_height)
+                if positioned:
+                    return face, positioned
     return None
 
 
@@ -206,6 +229,8 @@ def render(rgb, regions, settings, check, shorten=None):
             sx,sy,sr,sb = source_rect
             contour = [(round(px*width)-sx,round(py*height)-sy) for px,py in region.balloon_outline]
             safe = raster(contour,(sb-sy,sr-sx),max(4,round(min(sr-sx,sb-sy)*.045)))
+            retained_ink = ((np.max(bg-patch,axis=2) > 45) & (safe != 0)).astype(np.uint8)
+            safe[cv2.dilate(retained_ink,np.ones((3,3),np.uint8)) != 0] = 0
         focus = (pixels(region.box,width,height)[1]+pixels(region.box,width,height)[3])//2
 
         def fit(text):
