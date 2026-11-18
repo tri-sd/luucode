@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manga Translator Ultimate</title><link rel="stylesheet" href="app.css"><script src="popup.js" defer></script></head>
+<body class="popup">
+<header class="masthead"><div><span class="eyebrow">FREE LOCAL EDITION</span><h1>Manga Translator<br>Ultimate</h1></div>
+<button id="settings" class="icon-button" title="Cài đặt" aria-label="Cài đặt">⚙</button></header>
+<main>
+<div class="connection"><i id="indicator"></i><span id="engine">Đang kiểm tra engine…</span><strong>Phí API 0₫</strong></div>
+<div class="profiles">
+<label>Nguồn<select id="language"><option value="auto">Tự nhận diện</option><option value="en">Tiếng Anh</option><option value="ja">Tiếng Nhật</option></select></label>
+<label>Chất lượng<select id="quality"><option value="balanced">Cân bằng</option><option value="quality">Chất lượng cao</option><option value="low">Ít bộ nhớ</option></select></label>
+</div>
+<section class="progress" aria-label="Tiến trình">
+<div class="progress-top"><span>Tiến trình chương</span><span id="fraction">0 / 0</span></div>
+<progress id="progress" value="0" max="1"></progress>
+<div class="stats"><span><b id="done">0</b>Đã dịch</span><span><b id="processing">0</b>Đang xử lý</span><span><b id="waiting">0</b>Đang chờ</span><span><b id="errors">0</b>Lỗi ảnh</span></div>
+<div id="phase" role="status"></div>
+</section>
+<button id="chapter" class="primary">Dịch chương này <span aria-hidden="true">→</span></button>
+<div class="actions"><button id="current">Dịch ảnh hiện tại</button><button id="pause">Tạm dừng</button></div>
+<div class="toggles">
+<label><input type="checkbox" id="auto" checked>Tự dịch khi cuộn</label>
+<label><input type="checkbox" id="show" checked>Hiện bản dịch</label>
+</div>
+<div class="text-actions"><button id="retry">Dịch lại ảnh</button><button id="edit">Sửa thoại</button><button id="cdn" hidden>Cho phép CDN ảnh</button></div>
+<p id="message" class="message" role="status" hidden></p>
+</main></body></html>

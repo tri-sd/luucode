@@ -1,0 +1,141 @@
+import json
+import time
+from urllib.error import HTTPError
+
+import cv2
+import numpy as np
+from PIL import Image
+import pytest
+
+from manga_engine.cache import Cache
+from manga_engine.contracts import Region, Settings
+from manga_engine.jobs import Jobs
+from manga_engine.ocr import normalize, ordered, tiles
+from manga_engine.render import erase_patch, layout, render
+import manga_engine.translate as translator
+
+
+def region(id='r1', text='GOOD MORNING!', language='en'):
+    return Region(id=id, orientation='horizontal', source=text, language=language,
+                  box=(.1,.2,.8,.6), polygons=[])
+
+
+def test_schema_reorders_and_rejects_invalid_ids():
+    first, second = region(), region('r2', 'Thank you!')
+    one, two = {'id':'r1','text':'Chào buổi sáng!'}, {'id':'r2','text':'Cảm ơn bạn!'}
+    def check(*items):
+        return translator.validate(json.dumps({'translations':items}), [first, second], {})
+    out, rejected = check(two, one)
+    assert out == {'r1':one['text'],'r2':two['text']} and not rejected
+    assert set(check(one)[0]) == {'r1'}
+    for bad in [(one,one),(one,{'id':'r3','text':'Cảm ơn'})]:
+        with pytest.raises(ValueError):
+            check(*bad)
+    values, issues = check({'id':'r1','text':'Good morning!'}, {'id':'r2','text':'ありがとう'})
+    assert not values and set(issues) == {'r1','r2'}
+
+
+def test_greeting_does_not_drop_time_of_day():
+    items = [region('r1','おはよう!', 'ja'), region('r2','Good evening!')]
+    output, rejected = translator.validate(
+        '{"translations":[{"id":"r1","text":"Xin chào!"},{"id":"r2","text":"Chào buổi tối!"}]}',items,{})
+    assert output == {'r2':'Chào buổi tối!'}
+    assert list(rejected) == ['r1']
+
+
+def test_glossary_and_retry_keeps_valid_results(monkeypatch):
+    a, b = region('r1', 'Haru is here'), region('r2', 'Thanks!')
+    attempts = []
+    def fake(batch, settings, context, glossary, device, **kwargs):
+        attempts.append([r.id for r in batch])
+        if len(batch) == 2:
+            return translator.validate('{"translations":[{"id":"r1","text":"Haru đến rồi"}]}', batch, glossary)
+        return {'r2':'Cảm ơn!'}, {}
+    monkeypatch.setattr(translator, 'request_translation', fake)
+    translator.translate([a,b], Settings(), '', {'Haru':'Haru'}, lambda:None)
+    assert attempts == [['r1','r2'], ['r2']]
+    assert a.text == 'Haru đến rồi' and b.text == 'Cảm ơn!'
+
+
+def test_batch_size_respects_text_length():
+    items = [region(f'r{i}', 'a'*460) for i in range(1,6)]
+    assert [len(batch) for batch in translator.batches(items,'balanced')] == [2,2,1]
+    assert [len(batch) for batch in translator.batches(items,'low')] == [1,1,1,1,1]
+
+
+def test_gpu_error_retries_cpu(monkeypatch):
+    devices = []
+    def fake(batch, settings, context, glossary, device, **kwargs):
+        devices.append(device)
+        if device == 'auto':
+            raise HTTPError(translator.BASE+'/api/chat', 500, 'out of memory', None, None)
+        return {'r1': 'Chào buổi sáng!'}, {}
+    monkeypatch.setattr(translator, 'request_translation', fake)
+    item = region()
+    assert translator.translate([item],Settings(),'',{},lambda:None) == 'cpu'
+    assert devices == ['auto','cpu'] and item.text
+
+
+def test_japanese_order_and_tiling():
+    groups = [((10,5,30,45), None, 'left'), ((105,12,160,60), None, 'right'), ((20,100,90,120), None, 'next')]
+    assert [name for _,_,name in ordered(groups,True)] == ['right','left','next']
+    assert [name for _,_,name in ordered(groups,False)] == ['left','right','next']
+    xs = np.zeros((3600, 840), np.uint8)
+    hits = np.zeros_like(xs)
+    for x,y,part in tiles(xs, 1024):
+        hits[y:y+part.shape[0], x:x+part.shape[1]] = 1
+    assert hits.min() == 1
+
+
+def example_patch():
+    img = np.full((160,300,3), (246,234,188), dtype=np.uint8)
+    cv2.rectangle(img,(10,10),(289,149),(27,22,38),2)
+    cv2.putText(img,'MORNING',(64,94),cv2.FONT_HERSHEY_SIMPLEX,1.1,(22,22,22),2,cv2.LINE_AA)
+    x,y,r,b = 58,59,228,102
+    item = Region(id='r1', orientation='horizontal', source='MORNING', text='Chào buổi sáng!',
+                  box=normalize((x,y,r,b),300,160),bubble=normalize((11,11,289,149),300,160),
+                  polygons=[[(a/300,t/160) for a,t in [(x,y),(r,y),(r,b),(x,b)]]])
+    return img,item
+
+
+def test_inpaint_and_vietnamese_layout_keep_border():
+    img,item = example_patch()
+    xy, patch, bg, mask = erase_patch(img,item,False)
+    assert mask.any() and np.max(np.abs(np.median(patch[mask>0],axis=0)-bg)) < 8
+    assert np.max(patch[mask>0])-np.min(patch[mask>0]) <= 75
+    output,count = render(img,[item],Settings(),lambda:None)
+    assert count == 1 and output.shape == img.shape and np.array_equal(output[:12],img[:12])
+    assert not np.array_equal(output,img)
+    for style in ['regular','bold','italic']:
+        face, lines = layout('Tiếng Việt rất đẹp', (15,15,245,120),style,1,True)
+        assert face.getmask('ắ').getbbox() is not None and lines
+    assert layout('x'*300,(5,5,35,22),'regular',1,False) is None
+
+
+def test_cache_lru_corrections_and_reopen(tmp_path):
+    path = tmp_path/'cache.sqlite3'
+    cache = Cache(path, 44)
+    cache.put('a',b'original',b'X'*20,{}, {'r1':{'text':'Chào'}})
+    cache.put('b',b'original',b'Y'*20,{})
+    assert cache.page('a') is None and cache.page('b')[0] == b'Y'*20
+    assert Cache(path,44).corrections('a')['r1']['text'] == 'Chào'
+    cache.glossary({'cat':'mèo'})
+    cache.clear()
+    assert Cache(path,44).glossary() == {'cat':'mèo'} and cache.corrections('a')
+
+
+def test_queue_cancellation_and_next_job():
+    jobs = Jobs()
+    def work(check, progress):
+        while True:
+            check()
+            time.sleep(.01)
+    key = jobs.submit(work)
+    jobs.cancel(key)
+    done = jobs.submit(lambda check, progress: {'key':'finished'})
+    deadline = time.monotonic()+2
+    while jobs.status(done)['state'] != 'done':
+        assert time.monotonic() < deadline
+        time.sleep(.01)
+    assert jobs.status(key)['state'] == 'cancelled'
+    jobs.pool.shutdown()

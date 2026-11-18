@@ -1,0 +1,27 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cài đặt · Manga Translator Ultimate</title><link rel="stylesheet" href="app.css"><script src="settings.js" defer></script></head>
+<body class="full"><header class="masthead"><div><span class="eyebrow">MANGA TRANSLATOR ULTIMATE</span><h1>Cài đặt</h1></div></header>
+<main>
+<section><h2>Local AI Engine</h2>
+<form id="connection"><label>Mã ghép nối<input id="token" type="password" autocomplete="off" spellcheck="false" maxlength="43" placeholder="Lấy mã từ Copy Pairing Code.cmd"></label>
+<button class="primary">Lưu và kiểm tra kết nối</button></form><p id="health" class="message" role="status">Đang kiểm tra…</p>
+</section>
+<section><h2>Hồ sơ dịch</h2>
+<form id="profile" class="form-grid">
+<label>Mô hình Ollama đã tải<input id="model" list="models" spellcheck="false" required><datalist id="models"></datalist></label>
+<label>Thiết bị<select id="device"><option value="auto">Tự động (GPU nếu có)</option><option value="cpu">Chỉ CPU</option></select></label>
+<label>Ngôn ngữ nguồn<select id="language"><option value="auto">Tự nhận diện</option><option value="en">Tiếng Anh</option><option value="ja">Tiếng Nhật</option></select></label>
+<label>Hiệu năng<select id="quality"><option value="balanced">Cân bằng</option><option value="quality">Chất lượng cao</option><option value="low">Ít bộ nhớ</option></select></label>
+<label>Kiểu chữ Noto Sans<select id="font"><option value="regular">Thường</option><option value="bold">Đậm</option><option value="italic">Nghiêng</option></select></label>
+<label>Cỡ chữ tương đối<input type="number" id="font_scale" min="0.7" max="1.5" step="0.05" required></label>
+<label class="checkbox"><input type="checkbox" id="sfx">Thử dịch cả chữ hiệu ứng (SFX)</label>
+<label class="checkbox"><input type="checkbox" id="auto">Mặc định tự dịch khi cuộn</label>
+<button class="primary">Lưu hồ sơ</button></form>
+</section>
+<section><h2>Từ điển hội thoại</h2><p>Mỗi khóa là tên hoặc thuật ngữ gốc, mỗi giá trị là cách viết tiếng Việt muốn giữ nhất quán.</p>
+<label>Từ điển JSON<textarea id="glossary" spellcheck="false" rows="7" placeholder="{}"></textarea></label>
+<div class="actions"><button id="save-glossary">Lưu từ điển</button><button id="import">Nhập JSON</button><button id="export">Xuất JSON</button><input id="file" type="file" accept=".json,application/json" hidden></div></section>
+<section><h2>Cache ảnh</h2><p>Ảnh đã xử lý lưu trên máy. Chỉnh sửa và từ điển được giữ lại khi dọn cache ảnh.</p>
+<button id="clear">Xóa cache ảnh</button></section>
+<p id="notice" class="message" role="status"></p>
+</main></body></html>
