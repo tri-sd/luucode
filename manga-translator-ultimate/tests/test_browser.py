@@ -173,6 +173,12 @@ def test_mv3_image_anchor_and_reader(tmp_path):
         stable([base[0],base[1]+38,*base[2:]],new)
         page.evaluate('window.lazy(); document.querySelector("#reader").scrollTop=2100;')
         page.wait_for_function(changed('#lazy'),timeout=12000)
+        # The first image is well outside the observer's prefetch zone.
+        # Its attached translation must survive so returning needs no new PNG.
+        held = page.locator('#p').evaluate('(img)=>img.currentSrc')
+        assert held.startswith('blob:')
+        page.evaluate('document.querySelector("#reader").scrollTop=0')
+        assert page.locator('#p').evaluate('(img)=>img.currentSrc') == held
         page.evaluate('document.querySelector("#reader").scrollTop=0;window.replacePage()')
         page.wait_for_function(changed('#p'),timeout=12000)
         page.evaluate('window.chapter()')

@@ -16,6 +16,8 @@ if not (dist / "manifest.json").is_file():
 
 def included(file):
     relative = file.relative_to(root)
+    if relative.parts[0] == "dist":
+        return False
     if any(part in {"node_modules", "__pycache__", ".pytest_cache", ".git"} for part in relative.parts):
         return False
     if relative.parts[0] == "models" and (file.suffix == ".onnx" or file.name in {"vocab.txt"} or file.suffix == ".part"):

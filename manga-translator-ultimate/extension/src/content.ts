@@ -15,6 +15,7 @@ function boot() {
   let active = false, paused = false, auto = true, showing = true;
   let chapter = location.href, generation = 0, phase = '';
   let currentWork: Work | undefined;
+  let displayWork: Work | undefined;
   let single: {record: RecordState; force: boolean} | undefined;
   let timer = 0;
   let reconnectAt = 0;
@@ -59,6 +60,7 @@ function boot() {
 
   function forget(rec: RecordState) {
     if (currentWork?.record === rec) currentWork.abort.abort();
+    if (displayWork?.record === rec) displayWork.abort.abort();
     intersection.unobserve(rec.element);
     resize.unobserve(rec.element);
     restore(rec);
@@ -68,6 +70,7 @@ function boot() {
   function reset() {
     generation += 1;
     currentWork?.abort.abort();
+    displayWork?.abort.abort();
     single = undefined;
     phase = '';
     for (const rec of records.values()) forget(rec);
@@ -87,7 +90,7 @@ function boot() {
         forget(rec);
       } else if ((!rec.changing && !rec.anchor && rec.source !== imageSource(element)) || (rec.anchor && !rec.anchor.valid())) {
         forget(rec);
-      } else if (rec.anchor && (!rec.near || !showing)) {
+      } else if (rec.anchor && (!showing || (!rec.near && rec.anchor.kind === 'canvas'))) {
         restore(rec);
       }
     }
@@ -100,6 +103,15 @@ function boot() {
     }
     for (const rec of records.values()) {
       if (rec.state === 'new' && ready(rec.element)) rec.state = 'ready';
+    }
+    // Keep nearby replacements attached within an offscreen decoded-size budget.
+    let offscreenBytes = 0;
+    const offscreen = [...records.values()].filter(r => !r.near && r.anchor?.kind === 'image' && r.result)
+      .sort((a,b) => distance(a)-distance(b));
+    for (const rec of offscreen) {
+      const bytes = rec.result!.width*rec.result!.height*4;
+      if (offscreenBytes+bytes > 80*1024*1024) restore(rec);
+      else offscreenBytes += bytes;
     }
     dispatch();
   }
@@ -115,29 +127,31 @@ function boot() {
   }
 
   function dispatch() {
-    if (currentWork || document.hidden) return;
-    if (showing && Date.now() >= reconnectAt) {
-      const restoreNext = [...records.values()].find(r => r.near && r.canShow && !r.changing && !r.anchor && r.result && !r.note && single?.record !== r);
-      if (restoreNext) { launch(restoreNext, 'display', false); return; }
+    if (document.hidden) return;
+    if (!displayWork && showing && Date.now() >= reconnectAt) {
+      const restoreNext = [...records.values()].find(r => r !== currentWork?.record && r.near && r.canShow && !r.changing && !r.anchor && r.result && !r.note && single?.record !== r);
+      if (restoreNext) launch(restoreNext, 'display', false);
     }
-    if (paused || Date.now() < reconnectAt) return;
+    if (currentWork || paused || Date.now() < reconnectAt) return;
     if (single) {
       const {record, force} = single;
       single = undefined;
-      if (record.changing) { single = {record, force}; return; }
+      if (record.changing || displayWork?.record === record) { single = {record, force}; return; }
       if (records.get(record.element) === record) launch(record, 'process', force);
       return;
     }
     if (!active) return;
-    const candidates = [...records.values()].filter(r => !r.changing && r.state === 'ready' && (r.near || !auto));
+    const candidates = [...records.values()].filter(r => r !== displayWork?.record && !r.changing && r.state === 'ready' && (r.near || !auto));
     candidates.sort((a,b) => distance(a)-distance(b));
     if (candidates.length) launch(candidates[0], 'process', false);
   }
 
   function launch(record: RecordState, type: Work['type'], force: boolean) {
     const work = {record, abort: new AbortController(), generation, type};
-    currentWork = work;
+    if (type === 'display') displayWork = work;
+    else currentWork = work;
     void run(work, force).finally(() => {
+      if (displayWork === work) displayWork = undefined;
       if (currentWork === work) { currentWork = undefined; phase = ''; }
       schedule();
     });
@@ -270,7 +284,7 @@ function boot() {
       case 'show':
         showing = Boolean(value);
         if (!showing) {
-          if (currentWork?.type === 'display') currentWork.abort.abort();
+          displayWork?.abort.abort();
           for (const rec of records.values()) restore(rec);
         }
         break;
@@ -294,6 +308,7 @@ function boot() {
         for (const rec of records.values()) {
           if (value !== rec.result?.key) continue;
           if (currentWork?.record === rec) currentWork.abort.abort();
+          if (displayWork?.record === rec) displayWork.abort.abort();
           restore(rec); rec.note = undefined; rec.canShow = true;
         }
         break;
@@ -335,7 +350,9 @@ function boot() {
   document.addEventListener('visibilitychange', () => schedule());
   document.addEventListener('scroll', () => schedule(80), {passive:true, capture:true});
   window.addEventListener('pageshow', () => schedule());
-  window.addEventListener('pagehide', () => { currentWork?.abort.abort(); });
+  const navigation = (window as Window & {navigation?: EventTarget}).navigation;
+  navigation?.addEventListener('currententrychange', () => { pageChanged(); schedule(); });
+  window.addEventListener('pagehide', () => { currentWork?.abort.abort(); displayWork?.abort.abort(); });
   window.setInterval(() => {
     if (chapter !== location.href || (reconnectAt && Date.now() >= reconnectAt)) {
       reconnectAt = 0;

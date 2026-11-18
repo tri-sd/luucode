@@ -61,7 +61,7 @@ def bubble_for(gray, rect, component_cache):
     x, y, r, d = rect
     height, width = gray.shape
     rh, rw = d-y, r-x
-    radius = min(208, max(32, int(max(rh, rw)*1.45)))
+    radius = min(384, max(120, int(max(rh, rw)*2.1)))
     a, b, c, e = max(0, x-radius), max(0, y-radius), min(width, r+radius), min(height, d+radius)
     roi = gray[b:e, a:c]
     # A seeded, bounded flat-color component gives a conservative bubble around
@@ -86,12 +86,45 @@ def bubble_for(gray, rect, component_cache):
             continue
         if not (rw <= w and rh <= h and l <= xs and t <= ys and l+w >= xs+rw and t+h >= ys+rh):
             continue
-        if count < w*h*.40 or w*h > 20*rw*rh or w*h > 280_000:
+        if count < w*h*.40 or w*h > max(65_000, 48*rw*rh) or w*h > 420_000:
             continue
         box = a+l, b+t, a+l+w, b+t+h
         component_cache.append((box, mask[t+1:t+h+1, l+1:l+w+1].copy()))
         return box
     return None
+
+
+def recover_balloon_ink(gray, bubble, component, polygons):
+    """Recover missed glyphs inside an enclosed, flat speech bubble."""
+    x, y, r, d = bubble
+    patch = gray[y:d, x:r]
+    bg = float(np.median(patch[component != 0]))
+    outline, _ = cv2.findContours(component, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if len(outline) != 1:
+        return polygons
+    inside = np.zeros_like(patch)
+    cv2.drawContours(inside, outline, -1, 255, cv2.FILLED)
+    inside = cv2.erode(inside, np.ones((7, 7), np.uint8), borderType=cv2.BORDER_CONSTANT, borderValue=0)
+    contrast = np.abs(patch.astype(np.float32)-bg)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats((contrast > 28).astype(np.uint8))
+    typical = np.median([max(4, min(np.ptp(p[:,0]), np.ptp(p[:,1]))) for p in polygons])
+    envelope = np.zeros_like(patch)
+    for polygon in polygons:
+        cv2.fillPoly(envelope, [polygon - [x,y]], 255)
+    recovered = list(polygons)
+    for i in range(1, count):
+        a, b, w, h, area = stats[i]
+        if not (4 <= area <= 5*typical**2 and max(w,h) <= 5*typical):
+            continue
+        if a < 2 or b < 2 or a+w+2 > r-x or b+h+2 > d-y:
+            continue
+        window = np.s_[b-2:b+h+2, a-2:a+w+2]
+        glyph = labels[window] == i
+        if not inside[window].all() or envelope[window][glyph].all():
+            continue
+        l, t, rr, dd = x+a-2, y+b-2, x+a+w+1, y+b+h+1
+        recovered.append(np.array([(l,t),(rr,t),(rr,dd),(l,dd)], dtype=np.int32))
+    return recovered
 
 
 def ordered(groups, manga):
@@ -222,19 +255,21 @@ class Ocr:
                 # The same component is normally found from several line crops.
                 bubble = next((key for key in groups if key[0] and coverage(key[1], bubble) > .90), (True, bubble))[1]
             groups[(bubble is not None, bubble or box)].append(poly)
-        grouped = [(bounds(np.concatenate(polys)), box if inside else None, polys)
-                   for (inside, box), polys in groups.items()]
+        components = dict(component_cache)
+        grouped = []
+        for (inside, box), lines in groups.items():
+            vertical = sum(np.ptp(p[:,1]) > 1.4*np.ptp(p[:,0]) for p in lines) > len(lines)/2
+            ink = recover_balloon_ink(gray, box, components[box], lines) if inside else lines
+            grouped.append((bounds(np.concatenate(ink)), box if inside else None, (ink, vertical)))
         manga = settings.language != "en"
         if len(grouped) > 180:
             raise ValueError("Ảnh có quá nhiều vùng chữ. Hãy cắt ảnh thành các đoạn ngắn hơn.")
         regions = []
-        for index, (rect, bubble, polys) in enumerate(ordered(grouped, manga), 1):
+        for index, (rect, bubble, (polys, vertical)) in enumerate(ordered(grouped, manga), 1):
             check()
             x, y, r, d = rect
             pad = max(3, min(12, round(min(r-x, d-y)*.12)))
             crop = rgb[max(0, y-pad):min(height, d+pad), max(0, x-pad):min(width, r+pad)]
-            vertical = sum(np.ptp(p[:, 1]) >
-                           1.4*np.ptp(p[:, 0]) for p in polys) > len(polys)/2
             region = Region(id=f"r{index}", box=normalize(rect, width, height),
                             polygons=[[(int(a)/width, int(b)/height) for a, b in p] for p in polys],
                             orientation="vertical" if vertical else "horizontal",

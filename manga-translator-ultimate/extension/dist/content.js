@@ -215,6 +215,7 @@
   }
   function inlineAnchor(attrs, url) {
     return {
+      kind: "image",
       valid: () => attrs.every((a) => a.element.getAttribute(a.name) === a.ours),
       restore() {
         for (const a of attrs) {
@@ -368,7 +369,7 @@
         raf = requestAnimationFrame(follow);
       };
       raf = requestAnimationFrame(follow);
-      return { valid: () => Boolean(layer?.isConnected && image.style.opacity === "0" && imageSource(image) === source), restore };
+      return { kind: "canvas", valid: () => Boolean(layer?.isConnected && image.style.opacity === "0" && imageSource(image) === source), restore };
     } catch (error) {
       layer?.remove();
       throw error;
@@ -434,6 +435,7 @@
         let active = false, paused = false, auto = true, showing = true;
         let chapter = location.href, generation = 0, phase = "";
         let currentWork;
+        let displayWork;
         let single;
         let timer = 0;
         let reconnectAt = 0;
@@ -482,6 +484,7 @@
         }
         function forget(rec) {
           if (currentWork?.record === rec) currentWork.abort.abort();
+          if (displayWork?.record === rec) displayWork.abort.abort();
           intersection.unobserve(rec.element);
           resize.unobserve(rec.element);
           restore(rec);
@@ -490,6 +493,7 @@
         function reset() {
           generation += 1;
           currentWork?.abort.abort();
+          displayWork?.abort.abort();
           single = void 0;
           phase = "";
           for (const rec of records.values()) forget(rec);
@@ -507,7 +511,7 @@
               forget(rec);
             } else if (!rec.changing && !rec.anchor && rec.source !== imageSource(element) || rec.anchor && !rec.anchor.valid()) {
               forget(rec);
-            } else if (rec.anchor && (!rec.near || !showing)) {
+            } else if (rec.anchor && (!showing || !rec.near && rec.anchor.kind === "canvas")) {
               restore(rec);
             }
           }
@@ -527,6 +531,13 @@
           for (const rec of records.values()) {
             if (rec.state === "new" && ready(rec.element)) rec.state = "ready";
           }
+          let offscreenBytes = 0;
+          const offscreen = [...records.values()].filter((r) => !r.near && r.anchor?.kind === "image" && r.result).sort((a, b) => distance(a) - distance(b));
+          for (const rec of offscreen) {
+            const bytes = rec.result.width * rec.result.height * 4;
+            if (offscreenBytes + bytes > 80 * 1024 * 1024) restore(rec);
+            else offscreenBytes += bytes;
+          }
           dispatch();
         }
         function distance(rec) {
@@ -537,19 +548,16 @@
           return [...records.values()].filter((r) => ready(r.element)).sort((a, b) => distance(a) - distance(b))[0];
         }
         function dispatch() {
-          if (currentWork || document.hidden) return;
-          if (showing && Date.now() >= reconnectAt) {
-            const restoreNext = [...records.values()].find((r) => r.near && r.canShow && !r.changing && !r.anchor && r.result && !r.note && single?.record !== r);
-            if (restoreNext) {
-              launch(restoreNext, "display", false);
-              return;
-            }
+          if (document.hidden) return;
+          if (!displayWork && showing && Date.now() >= reconnectAt) {
+            const restoreNext = [...records.values()].find((r) => r !== currentWork?.record && r.near && r.canShow && !r.changing && !r.anchor && r.result && !r.note && single?.record !== r);
+            if (restoreNext) launch(restoreNext, "display", false);
           }
-          if (paused || Date.now() < reconnectAt) return;
+          if (currentWork || paused || Date.now() < reconnectAt) return;
           if (single) {
             const { record, force } = single;
             single = void 0;
-            if (record.changing) {
+            if (record.changing || displayWork?.record === record) {
               single = { record, force };
               return;
             }
@@ -557,14 +565,16 @@
             return;
           }
           if (!active) return;
-          const candidates = [...records.values()].filter((r) => !r.changing && r.state === "ready" && (r.near || !auto));
+          const candidates = [...records.values()].filter((r) => r !== displayWork?.record && !r.changing && r.state === "ready" && (r.near || !auto));
           candidates.sort((a, b) => distance(a) - distance(b));
           if (candidates.length) launch(candidates[0], "process", false);
         }
         function launch(record, type, force) {
           const work = { record, abort: new AbortController(), generation, type };
-          currentWork = work;
+          if (type === "display") displayWork = work;
+          else currentWork = work;
           void run(work, force).finally(() => {
+            if (displayWork === work) displayWork = void 0;
             if (currentWork === work) {
               currentWork = void 0;
               phase = "";
@@ -712,7 +722,7 @@
             case "show":
               showing = Boolean(value);
               if (!showing) {
-                if (currentWork?.type === "display") currentWork.abort.abort();
+                displayWork?.abort.abort();
                 for (const rec of records.values()) restore(rec);
               }
               break;
@@ -738,6 +748,7 @@
               for (const rec of records.values()) {
                 if (value !== rec.result?.key) continue;
                 if (currentWork?.record === rec) currentWork.abort.abort();
+                if (displayWork?.record === rec) displayWork.abort.abort();
                 restore(rec);
                 rec.note = void 0;
                 rec.canShow = true;
@@ -783,8 +794,14 @@
         document.addEventListener("visibilitychange", () => schedule());
         document.addEventListener("scroll", () => schedule(80), { passive: true, capture: true });
         window.addEventListener("pageshow", () => schedule());
+        const navigation = window.navigation;
+        navigation?.addEventListener("currententrychange", () => {
+          pageChanged();
+          schedule();
+        });
         window.addEventListener("pagehide", () => {
           currentWork?.abort.abort();
+          displayWork?.abort.abort();
         });
         window.setInterval(() => {
           if (chapter !== location.href || reconnectAt && Date.now() >= reconnectAt) {

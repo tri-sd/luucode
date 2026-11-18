@@ -2,11 +2,12 @@ import { readFile, mkdir, copyFile, writeFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 
 const outdir = new URL('./dist/', import.meta.url);
+const {version} = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
 const key = (await readFile(new URL('./chrome-key.txt', import.meta.url), 'utf8')).trim();
 const icons = Object.fromEntries([16, 32, 48, 128].map(size => [size, 'icons/'+size+'.png']));
 const manifest = {
   manifest_version: 3, name: 'MANGA TRANSLATOR ULTIMATE — FREE LOCAL EDITION',
-  short_name: 'Manga Translator', version: '1.0.0', key,
+  short_name: 'Manga Translator', version, key,
   description: 'Dịch truyện Anh và Nhật sang tiếng Việt bằng AI local.',
   minimum_chrome_version: '120',
   permissions: ['activeTab', 'scripting', 'storage', 'unlimitedStorage'],

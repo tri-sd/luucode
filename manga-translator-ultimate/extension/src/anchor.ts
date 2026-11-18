@@ -2,6 +2,7 @@ import { pngBlob } from './bytes';
 import { imageSource, type MangaImage } from './detector';
 
 export interface Anchor {
+  kind: 'image' | 'canvas';
   valid(): boolean;
   restore(): void;
 }
@@ -27,6 +28,7 @@ function attrsFor(img: HTMLImageElement, url: string, density: number): Attribut
 
 function inlineAnchor(attrs: Attribute[], url: string): Anchor {
   return {
+    kind: 'image',
     valid: () => attrs.every(a => a.element.getAttribute(a.name) === a.ours),
     restore() {
       for (const a of attrs) {
@@ -171,7 +173,7 @@ async function canvasAnchor(image: MangaImage, blob: Blob, signal: AbortSignal):
       raf = requestAnimationFrame(follow);
     };
     raf = requestAnimationFrame(follow);
-    return {valid: () => Boolean(layer?.isConnected && image.style.opacity === '0' && imageSource(image) === source), restore};
+    return {kind: 'canvas', valid: () => Boolean(layer?.isConnected && image.style.opacity === '0' && imageSource(image) === source), restore};
   } catch (error) {
     layer?.remove();
     throw error;

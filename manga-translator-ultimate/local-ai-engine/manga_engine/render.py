@@ -35,6 +35,10 @@ def erase_patch(rgb, region, aggressive):
         cv2.fillPoly(mask, [points], 255)
     if not mask.any():
         return None
+    if region.bubble:
+        # Allow anti-aliased strokes just outside the detector polygon while
+        # refusing components that continue out of the permitted text area.
+        mask = cv2.dilate(mask, np.ones((5, 5), np.uint8))
     around = (cv2.dilate(mask, np.ones((9, 9), np.uint8)) > 0) & (mask == 0)
     samples = patch[around]
     if len(samples) < 20:
@@ -45,13 +49,15 @@ def erase_patch(rgb, region, aggressive):
     texture = float(np.quantile(surrounding, .76))
     if texture > (38 if aggressive else 27):
         return None
-    ink = ((dist > max(10, texture*1.65)) & (mask > 0)).astype(np.uint8)
+    ink = (dist > max(9, texture*1.65)).astype(np.uint8)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(ink)
     keep = np.zeros(count, np.uint8)
     max_area = np.count_nonzero(mask)*.54
     for component in range(1, count):
-        _, _, ww, hh, area = stats[component]
-        if 2 <= area <= max_area and (ww < c-a or hh < d-b):
+        l, t, ww, hh, area = stats[component]
+        if not (1 <= area <= max_area and (ww < c-a or hh < d-b)):
+            continue
+        if np.all(mask[t:t+hh, l:l+ww][labels[t:t+hh, l:l+ww] == component]):
             keep[component] = 255
     clean = keep[labels]
     if not clean.any() or np.count_nonzero(clean) > np.count_nonzero(mask)*.60:

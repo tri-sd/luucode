@@ -139,3 +139,34 @@ def test_queue_cancellation_and_next_job():
         time.sleep(.01)
     assert jobs.status(key)['state'] == 'cancelled'
     jobs.pool.shutdown()
+
+
+def test_recovers_undetected_balloon_line_without_erasing_art(monkeypatch):
+    from pathlib import Path
+    from manga_engine.ocr import Ocr
+    rgb = np.asarray(Image.open(Path(__file__).parent / 'fixtures/english.png').convert('RGB'))
+    # Simulate the detector finding GOOD but entirely missing MORNING!
+    box = np.array([(419,88),(520,88),(520,123),(419,123)], dtype=np.int32)
+    ocr = Ocr()
+    monkeypatch.setattr(ocr, 'detect', lambda *args: [box])
+    item, = ocr.regions(rgb, Settings(language='en'), lambda: None)
+    assert item.source == 'GOOD MORNING!'
+    assert len(item.polygons) > 1
+    (x,y,r,d), repaired, _, mask = erase_patch(rgb,item,False)
+    assert y < 148 < d
+    original = rgb[y:d,x:r]
+    missed_ink = (original[:,:,0] < 100) & (np.arange(y,d)[:,None] > 129)
+    assert missed_ink.any() and np.mean(mask[missed_ink] > 0) > .95
+    assert np.median(repaired[missed_ink]) > 230
+    item.text = 'Chào buổi sáng!'
+    output, rendered = render(rgb,[item],Settings(language='en'),lambda:None)
+    assert rendered == 1
+    assert np.array_equal(output[:, :313], rgb[:, :313])
+
+
+def test_rejects_source_phrase_inside_vietnamese():
+    item = region(text='Sullivan-sama is being detained at Prison Boros.')
+    values, rejected = translator.validate(
+        '{"translations":[{"id":"r1","text":"Do vậy, Sullivan-sama is being detained ở Prison Boros."}]}',
+        [item], {})
+    assert not values and 'r1' in rejected

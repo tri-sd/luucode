@@ -1,5 +1,13 @@
 # Kiểm thử hồi quy — 18/11/2026
 
+## Bản 1.1
+
+**16 bài đạt** trên Linux với mô hình Qwen3 thực và Chrome for Testing. Ba vùng tiếng Anh và ba vùng tiếng Nhật được đọc, dịch và kết xuất đầy đủ trên hai ảnh mẫu. Bài hồi quy mới mô phỏng bộ dò bỏ cả một dòng trong bong bóng, đo mặt nạ phủ hơn 95% nét đậm của dòng đã bỏ sót và xác nhận vùng hình ngoài bong bóng giữ nguyên. Bài kiểm thử Chromium cuộn ảnh đã dịch ra khỏi vùng tải trước và xác nhận URL blob của ảnh giữ nguyên khi quay lại. Bộ lọc mới thử lại khi câu tiếng Việt còn sao chép một cụm tiếng Anh từ nguồn.
+
+Các ảnh bằng chứng trong `docs/evidence` được cập nhật từ lượt kiểm thử 1.1. Trang Comix và Cốc Cốc trên máy người dùng chưa được chạy lại bằng bản 1.1.
+
+## Bản 1.0
+
 **14 bài đạt** trong lượt cuối, tổng thời gian 92,87 giây. Môi trường Linux x64, CPU giới hạn 2 lõi theo cgroup, Ollama 0.6.8, Chrome for Testing 151 và Playwright 1.62. Hai bài tích hợp ảnh gọi mô hình thật. Các fixture hình ảnh được vẽ riêng cho dự án.
 
 ```text
