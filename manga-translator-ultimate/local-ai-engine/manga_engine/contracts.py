@@ -34,6 +34,7 @@ class Region(Strict):
     text: Text = ""
     issue: str = ""
     bubble: Box | None = None
+    balloon_outline: list[Point] | None = None
     placement: Box | None = None
     font: Font | None = None
     font_scale: float | None = Field(default=None, ge=.7, le=1.5)

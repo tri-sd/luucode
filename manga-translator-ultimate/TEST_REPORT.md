@@ -1,5 +1,12 @@
 # Kiểm thử hồi quy — 18/11/2026
 
+
+## Bản 1.2
+
+**18 bài đạt** trên Linux với Qwen3 thật và Chrome for Testing. Hai fixture vẫn đọc, dịch và vẽ đủ 3/3 vùng Anh và 3/3 vùng Nhật. Mẫu hồi quy ô bị cắt sát cạnh có bốn dòng, trong đó detector cố ý chỉ tìm hai. Test xác nhận một kết quả dịch, đủ bốn dòng OCR, các nét gốc đều được xóa trong mẫu và vùng hình ngoài ô giữ nguyên. Kiểm tra mới từ chối bản dịch lời rủ bị đổi thành lệnh hoặc mất đích đến. Chromium tiếp tục vượt qua kiểm tra cuộn, cache, zoom và thay trang.
+
+[Kết quả đo tốc độ so với 1.1](docs/UPDATE-1.2.md#đo-tốc-độ). Chưa chạy lại đúng trang Comix trên Cốc Cốc và RTX 3050 của người dùng.
+
 ## Bản 1.1
 
 **16 bài đạt** trên Linux với mô hình Qwen3 thực và Chrome for Testing. Ba vùng tiếng Anh và ba vùng tiếng Nhật được đọc, dịch và kết xuất đầy đủ trên hai ảnh mẫu. Bài hồi quy mới mô phỏng bộ dò bỏ cả một dòng trong bong bóng, đo mặt nạ phủ hơn 95% nét đậm của dòng đã bỏ sót và xác nhận vùng hình ngoài bong bóng giữ nguyên. Bài kiểm thử Chromium cuộn ảnh đã dịch ra khỏi vùng tải trước và xác nhận URL blob của ảnh giữ nguyên khi quay lại. Bộ lọc mới thử lại khi câu tiếng Việt còn sao chép một cụm tiếng Anh từ nguồn.

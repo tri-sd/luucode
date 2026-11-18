@@ -3,6 +3,7 @@ import os
 import re
 import threading
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
@@ -14,9 +15,11 @@ from PIL import Image
 from rapidocr_onnxruntime.ch_ppocr_det import TextDetector
 
 from .contracts import Region
+from .balloons import group_light_balloons, light_ink, raster
 
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "models"
+os.environ.setdefault("OMP_THREAD_LIMIT", "1")
 JP = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 if os.environ.get("MANGA_TESSERACT"):
     pytesseract.pytesseract.tesseract_cmd = os.environ["MANGA_TESSERACT"]
@@ -219,36 +222,69 @@ class Ocr:
         return "".join(vocab[i].removeprefix("##") for i in tokens[1:] if i >= 5), float(np.mean(probabilities)) if probabilities else 0
 
     @staticmethod
-    def english_text(crop, quality):
+    def english_text(crop, quality, verify_lines=False):
         gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
         if min(gray.shape) < 90:
             gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
         gray = cv2.copyMakeBorder(gray, 8, 8, 8, 8, cv2.BORDER_REPLICATE)
-        candidates = [gray]
-        if quality == "quality":
-            candidates.append(cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1])
+        candidates = [(gray, 6)]
+        if verify_lines or quality == "quality":
+            binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+            candidates.append((binary, 6))
+        if verify_lines:
+            candidates.append((binary, 11))
+            counts = np.count_nonzero(gray[8:-8,8:-8] < min(180, np.median(gray)-30),axis=1)
+            strong = np.pad(counts >= max(3, counts.max()*.24),(8,8))
+            starts = np.flatnonzero(strong & ~np.r_[False,strong[:-1]])
+            ends = np.flatnonzero(strong & ~np.r_[strong[1:],False])+1
+            bands = [(a,b) for a,b in zip(starts,ends) if b-a >= max(3,round(len(strong)*.018))]
         best = "", 0
-        for image in candidates:
-            data = pytesseract.image_to_data(image, lang="eng", config="--psm 6",
+        for image, mode in candidates:
+            data = pytesseract.image_to_data(image, lang="eng", config=f"--psm {mode}",
                                             output_type=pytesseract.Output.DICT, timeout=12)
-            words = [(word.strip(), max(0, float(conf))) for word, conf in zip(data["text"], data["conf"])
-                     if word.strip() and float(conf) >= 0]
-            if words:
-                score = sum(c*len(w) for w, c in words) / (100*sum(len(w) for w, _ in words))
-                phrase = " ".join(w for w, _ in words)
-                if score > best[1] and re.search(r"[a-zA-Z]", phrase):
-                    best = phrase, score
-                if score >= .84:
-                    break
+            usable = [i for i,word in enumerate(data["text"]) if word.strip() and float(data["conf"][i]) >= 0]
+            if not usable:
+                continue
+            if verify_lines and any(not any(re.search(r"[A-Za-z0-9]",data["text"][i]) and
+                    data["top"][i] <= (a+b)//2 <= data["top"][i]+data["height"][i] for i in usable)
+                    for a,b in bands):
+                continue
+            words = [(data["text"][i].strip(),float(data["conf"][i])) for i in usable]
+            score = sum(c*len(w) for w,c in words) / (100*sum(len(w) for w,_ in words))
+            phrase = " ".join(w for w,_ in words)
+            if score > best[1] and re.search(r"[a-zA-Z]",phrase):
+                best = phrase, score
+            if score >= .84:
+                break
         return best
 
     def regions(self, rgb, settings, check):
         height, width = rgb.shape[:2]
         gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
         polys = self.detect(rgb, settings.quality, check)
+        grouped = []
+        claimed = set()
+        for bubble, outline, members in group_light_balloons(gray, [bounds(p) for p in polys]):
+            x, y, r, b = bubble
+            patch = rgb[y:b,x:r]
+            inside = raster(outline-[x,y], patch.shape[:2], 3)
+            evidence = light_ink(patch, inside)
+            if evidence is None:
+                continue
+            background, ink = evidence
+            yy, xx = np.where(ink)
+            a, t, c, d = max(0,xx.min()-5), max(0,yy.min()-5), min(r-x,xx.max()+6), min(b-y,yy.max()+6)
+            crop = np.where(inside[t:d,a:c,None] != 0, patch[t:d,a:c], background).astype(np.uint8)
+            lines = [polys[i] for i in members]
+            vertical = sum(np.ptp(p[:,1]) > 1.4*np.ptp(p[:,0]) for p in lines) > len(lines)/2
+            grouped.append(((x+a,y+t,x+c,y+d), bubble, (lines, vertical, outline, crop)))
+            claimed.update(members)
+
         groups = defaultdict(list)
         component_cache = []
-        for poly in polys:
+        for index, poly in enumerate(polys):
+            if index in claimed:
+                continue
             box = bounds(poly)
             bubble = bubble_for(gray, box, component_cache)
             if bubble is not None:
@@ -256,22 +292,23 @@ class Ocr:
                 bubble = next((key for key in groups if key[0] and coverage(key[1], bubble) > .90), (True, bubble))[1]
             groups[(bubble is not None, bubble or box)].append(poly)
         components = dict(component_cache)
-        grouped = []
         for (inside, box), lines in groups.items():
             vertical = sum(np.ptp(p[:,1]) > 1.4*np.ptp(p[:,0]) for p in lines) > len(lines)/2
             ink = recover_balloon_ink(gray, box, components[box], lines) if inside else lines
-            grouped.append((bounds(np.concatenate(ink)), box if inside else None, (ink, vertical)))
+            grouped.append((bounds(np.concatenate(ink)), box if inside else None, (ink, vertical, None, None)))
         manga = settings.language != "en"
         if len(grouped) > 180:
             raise ValueError("Ảnh có quá nhiều vùng chữ. Hãy cắt ảnh thành các đoạn ngắn hơn.")
         regions = []
-        for index, (rect, bubble, (polys, vertical)) in enumerate(ordered(grouped, manga), 1):
+        to_read = []
+        for index, (rect, bubble, (polys, vertical, outline, full_crop)) in enumerate(ordered(grouped, manga), 1):
             check()
             x, y, r, d = rect
             pad = max(3, min(12, round(min(r-x, d-y)*.12)))
-            crop = rgb[max(0, y-pad):min(height, d+pad), max(0, x-pad):min(width, r+pad)]
+            crop = full_crop if full_crop is not None else rgb[max(0, y-pad):min(height, d+pad), max(0, x-pad):min(width, r+pad)]
             region = Region(id=f"r{index}", box=normalize(rect, width, height),
                             polygons=[[(int(a)/width, int(b)/height) for a, b in p] for p in polys],
+                            balloon_outline=[(int(a)/width,int(b)/height) for a,b in outline] if outline is not None else None,
                             orientation="vertical" if vertical else "horizontal",
                             bubble=normalize(bubble, width, height) if bubble else None)
             if bubble is None and not settings.sfx:
@@ -283,10 +320,15 @@ class Ocr:
                     region.issue = "Đã bỏ qua chữ hiệu ứng nghiêng theo cài đặt."
                     regions.append(region)
                     continue
+            regions.append(region)
+            to_read.append((region,crop,vertical))
+
+        def recognize(entry):
+            region,crop,vertical = entry
             text, score, language = "", 0, "en"
             try:
                 if settings.language != "ja" and not (settings.language == "auto" and vertical):
-                    text, score = self.english_text(crop, settings.quality)
+                    text, score = self.english_text(crop, settings.quality, region.balloon_outline is not None)
                 if settings.language == "ja" or (settings.language == "auto" and score < .72):
                     japanese, jp_score = self.japanese_text(crop, check)
                     if settings.language == "ja" or (JP.search(japanese) and jp_score >= .58):
@@ -299,7 +341,15 @@ class Ocr:
             minimum = .55 if language == "ja" else .50
             if score < minimum or not text or (language == "ja" and not JP.search(text)):
                 region.issue = "OCR không đủ tin cậy. Vùng này được giữ nguyên."
-            regions.append(region)
+
+        if settings.language == "en" and settings.quality != "low" and len(to_read) > 1:
+            with ThreadPoolExecutor(max_workers=2) as workers:
+                for _ in workers.map(recognize,to_read):
+                    check()
+        else:
+            for entry in to_read:
+                check()
+                recognize(entry)
         if settings.quality == "low":
             self.japanese = None
         if settings.language == "auto" and regions and sum(r.language == "en" for r in regions) > len(regions)/2:

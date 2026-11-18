@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from .ocr import pixels
+from .balloons import light_ink, raster
 
 FONTS = Path(__file__).resolve().parents[1] / "fonts"
 
@@ -23,6 +24,19 @@ def font(style, size):
 
 def erase_patch(rgb, region, aggressive):
     height, width = rgb.shape[:2]
+    if region.balloon_outline and region.bubble:
+        x,y,r,b = pixels(region.bubble,width,height)
+        patch = rgb[y:b,x:r]
+        outline = [(round(px*width)-x,round(py*height)-y) for px,py in region.balloon_outline]
+        inside = raster(outline,patch.shape[:2],3)
+        evidence = light_ink(patch,inside)
+        if evidence is None:
+            return None
+        bg, ink = evidence
+        mask = cv2.bitwise_and(cv2.dilate(ink.astype(np.uint8)*255,np.ones((3,3),np.uint8)),inside)
+        repaired = patch.copy()
+        repaired[mask != 0] = np.rint(bg).astype(np.uint8)
+        return (x,y,r,b), repaired, bg, mask
     a, b, c, d = pixels(region.box, width, height)
     pad = min(16, max(6, round(min(c-a, d-b)*.2)))
     x, y, r, s = max(0, a-pad), max(0, b-pad), min(width, c+pad), min(height, d+pad)
@@ -107,6 +121,32 @@ def layout(text, rect, style, scale, ellipse):
     return None
 
 
+def fit_balloon(text, safe, x, y, style, scale, focus):
+    """Find a readable placement wholly inside the measured balloon contour."""
+    height, width = safe.shape
+    top, bottom = np.where(safe.any(axis=1))[0][[0,-1]] if safe.any() else (0,0)
+    center = min(bottom, max(top, focus-y))
+    options = []
+    for anchor in {center, (top+bottom)//2}:
+        for fraction in (.86,.68,.52,.38):
+            half = max(6, round((bottom-top)*fraction/2))
+            a,b = max(top,anchor-half),min(bottom+1,anchor+half)
+            common = np.flatnonzero(safe[a:b].all(axis=0)) if a < b else np.array([])
+            if not common.size:
+                continue
+            spans = np.split(common,np.flatnonzero(np.diff(common)>1)+1)
+            span = max(spans,key=len)
+            if len(span) >= 12:
+                rect = (x+span[0],y+a,x+span[-1]+1,y+b)
+                fit = layout(text,rect,style,scale,False)
+                if fit:
+                    options.append((fit[0].size, -abs(anchor-center), rect, fit))
+    if not options:
+        return None
+    _, _, rect, fit = max(options,key=lambda item:item[:2])
+    return rect, fit
+
+
 def render(rgb, regions, settings, check, shorten=None):
     result = rgb.copy()
     height, width = rgb.shape[:2]
@@ -132,11 +172,23 @@ def render(rgb, regions, settings, check, shorten=None):
             rect = x, y, r, b
         style = region.font or settings.font
         scale = region.font_scale or settings.font_scale
-        typeset = layout(region.text, rect, style, scale, ellipse)
+        safe = None
+        if region.balloon_outline and region.placement is None:
+            sx,sy,sr,sb = source_rect
+            contour = [(round(px*width)-sx,round(py*height)-sy) for px,py in region.balloon_outline]
+            safe = raster(contour,(sb-sy,sr-sx),max(4,round(min(sr-sx,sb-sy)*.045)))
+        focus = (pixels(region.box,width,height)[1]+pixels(region.box,width,height)[3])//2
+
+        def fit(text):
+            if safe is None:
+                return rect, layout(text, rect, style, scale, ellipse)
+            return fit_balloon(text,safe,source_rect[0],source_rect[1],style,scale,focus) or (rect,None)
+
+        rect, typeset = fit(region.text)
         if typeset is None and shorten:
             short = shorten(region)
             if short and len(short) < len(region.text):
-                typeset = layout(short, rect, style, scale, ellipse)
+                rect, typeset = fit(short)
                 if typeset:
                     region.text = short
         if typeset is None:
@@ -145,9 +197,15 @@ def render(rgb, regions, settings, check, shorten=None):
         a, t, c, d = source_rect
         rx, ry, rr, rb = rect
         left, top, right, bottom = min(a, rx), min(t, ry), max(c, rr), max(d, rb)
-        working = result[top:bottom, left:right].copy()
+        original = rgb[top:bottom, left:right]
+        previous = result[top:bottom, left:right]
+        working = previous.copy()
         old = working[t-top:d-top, a-left:c-left]
         old[mask > 0] = patch[mask > 0]
+        prior_changes = np.any(previous != original,axis=2)
+        if prior_changes[t-top:d-top,a-left:c-left][mask > 0].any():
+            region.issue = "Vùng này giao với một vùng đã dịch."
+            continue
         image = Image.fromarray(working)
         draw = ImageDraw.Draw(image)
         face, lines = typeset
@@ -157,6 +215,16 @@ def render(rgb, regions, settings, check, shorten=None):
             if box[0] < rx or box[1] < ry or box[2] > rr or box[3] > rb:
                 region.issue = "Dấu hoặc chữ vượt lề. Hãy chỉnh vị trí."
                 break
+            bx,by,br,bb = math.floor(box[0]),math.floor(box[1]),math.ceil(box[2]),math.ceil(box[3])
+            area = np.s_[by-top:bb-top,bx-left:br-left]
+            if prior_changes[area].any():
+                region.issue = "Vị trí chèn giao với bản dịch của vùng khác."
+                break
+            if region.balloon_outline is None and np.min(bg) >= 210:
+                remaining = np.max(bg-working[area],axis=2) > 45
+                if np.count_nonzero(remaining) > max(3,.018*remaining.size):
+                    region.issue = "Còn nét gốc ở vị trí chèn. Vùng này được giữ nguyên."
+                    break
             draw.text((tx-left, ty-top), line, font=face, fill=color, anchor="mm")
         else:
             result[top:bottom, left:right] = np.asarray(image)

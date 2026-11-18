@@ -151,11 +151,11 @@ def test_recovers_undetected_balloon_line_without_erasing_art(monkeypatch):
     monkeypatch.setattr(ocr, 'detect', lambda *args: [box])
     item, = ocr.regions(rgb, Settings(language='en'), lambda: None)
     assert item.source == 'GOOD MORNING!'
-    assert len(item.polygons) > 1
+    assert item.balloon_outline
     (x,y,r,d), repaired, _, mask = erase_patch(rgb,item,False)
     assert y < 148 < d
     original = rgb[y:d,x:r]
-    missed_ink = (original[:,:,0] < 100) & (np.arange(y,d)[:,None] > 129)
+    missed_ink = (original[:,:,0] < 100) & ((np.arange(y,d)[:,None] > 129) & (np.arange(y,d)[:,None] < 158)) & (np.arange(x,r)[None,:] > 370) & (np.arange(x,r)[None,:] < 570)
     assert missed_ink.any() and np.mean(mask[missed_ink] > 0) > .95
     assert np.median(repaired[missed_ink]) > 230
     item.text = 'Chào buổi sáng!'
@@ -170,3 +170,44 @@ def test_rejects_source_phrase_inside_vietnamese():
         '{"translations":[{"id":"r1","text":"Do vậy, Sullivan-sama is being detained ở Prison Boros."}]}',
         [item], {})
     assert not values and 'r1' in rejected
+
+
+def test_edge_clipped_balloon_is_one_complete_replacement(monkeypatch):
+    from PIL import ImageDraw
+    from manga_engine.ocr import Ocr
+    from manga_engine.render import font
+    page = Image.new('RGB',(320,350),(48,48,48))
+    draw = ImageDraw.Draw(page)
+    draw.ellipse((-80,42,184,315),fill=(255,255,255),outline=(0,0,0),width=4)
+    for i,line in enumerate(['SULLIVAN','IS BEING','DETAINED','IN BOROS.']):
+        draw.text((68,120+i*29),line,fill='black',font=font('bold',20),anchor='mm')
+    source = np.asarray(page)
+    ocr = Ocr()
+    # The detector misses the middle two lines and reports two separate boxes.
+    monkeypatch.setattr(ocr,'detect',lambda *args:[
+        np.array([[16,y-12],[125,y-12],[125,y+12],[16,y+12]],np.int32) for y in (120,207)
+    ])
+    region, = ocr.regions(source,Settings(language='en'),lambda:None)
+    assert 'SULLIVAN IS BEING DETAINED IN BOROS' in region.source
+    assert region.balloon_outline
+    (x,y,r,b), cleared, _, mask = erase_patch(source,region,False)
+    for row in (120,149,178,207):
+        ink = source[row-8:row+9,16:125,0] < 145
+        assert ink.any()
+        assert np.min(cleared[row-8-y:row+9-y,16-x:125-x,0][ink]) > 235
+    region.text = 'Sullivan đang bị giam trong nhà tù Boros.'
+    output,count = render(source,[region],Settings(language='en'),lambda:None)
+    assert count == 1
+    assert np.array_equal(source[:,184:],output[:,184:])
+    assert np.array_equal(source[:43],output[:43])
+
+
+def test_invitation_preserves_destination_and_tone():
+    item = region(text="LET'S GO HOME.")
+    for wording in ('Đi thôi!', 'Hãy về nhà đi.'):
+        output, rejected = translator.validate(
+            json.dumps({'translations':[{'id':'r1','text':wording}]}),[item],{})
+        assert not output and 'r1' in rejected
+    output, _ = translator.validate(
+        '{"translations":[{"id":"r1","text":"Mình về nhà thôi!"}]}',[item],{})
+    assert output == {'r1':'Mình về nhà thôi!'}
