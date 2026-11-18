@@ -1,5 +1,11 @@
 # Kiểm thử hồi quy
 
+## Bản 1.7
+
+**29 bài đạt** với Chromium và Qwen3 local trên Linux. Ca mới kiểm tra ngữ cảnh rút gọn, thử lại với câu gốc, áp dụng cách dịch xác định cho cả câu ngắn và ưu tiên từ điển. Kiểm thử chế độ Ít bộ nhớ xác nhận engine giải phóng mô hình một lần sau khi dàn chữ và bỏ qua việc giải phóng khi dùng lại ảnh đã kết xuất.
+
+Phép đo trên ba ảnh gốc chương 466 giữ 9/9 ô thoại từng bị sót. Hai mẫu Anh và Nhật đều hiện 3/3 ô và ca đổi kiểu chữ vẫn đạt. [Số đo và cách cập nhật](docs/UPDATE-1.7.md).
+
 ## Bản 1.6
 
 **25 bài đạt** trên Linux với Chromium và Qwen3 local. Trên ảnh gốc chương 466, cả chín ô từng báo lỗi vẫn hiện bản dịch. Ca trang 7 kiểm tra riêng nghĩa của câu cuối sau khi gộp thêm ô vào lượt dịch. Ca đổi kiểu chữ kiểm tra việc dùng lại bản dịch sau khi mở lại cơ sở dữ liệu, xử lý lại khi thay ngữ cảnh và quét lại khi người dùng yêu cầu. Đổi sang chữ đậm trên ảnh mẫu tiếng Anh mất 0,61 giây qua API, kể cả chờ trạng thái tác vụ, và giữ đủ 3/3 ô. Xem [cách cập nhật](docs/UPDATE-1.6.md).

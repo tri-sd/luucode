@@ -2,6 +2,7 @@ import base64
 import hashlib
 import io
 import json
+from contextlib import ExitStack
 
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -10,7 +11,7 @@ from pydantic import ValidationError
 from .contracts import Edit, Region, Settings
 from .ocr import Ocr
 from .render import render
-from .translate import installed, request_translation, translate
+from .translate import installed, request_translation, translate, unload
 
 MAX_IMAGE = 22_020_096
 MAX_RESULT = 40_000_000
@@ -74,36 +75,49 @@ class Engine:
              glossary, page.context], sort_keys=True)
         translation_key = hashlib.sha256(translation_identity.encode()).hexdigest()
         saved = None if page.force else self.cache.translation(translation_key)
-        if saved is None:
-            progress("Phát hiện chữ và nhận dạng OCR")
-            regions = self.ocr.regions(rgb, page.settings, check)
-            translatable = [r for r in regions if not r.issue]
-            progress("Dịch hội thoại bằng Ollama local")
-            device = translate(regions, page.settings, page.context, glossary, check)
-            translation_base = ([r.model_dump(mode="json") for r in regions]
-                                if translatable and all(r.text for r in translatable) else None)
-        else:
-            progress("Dùng lại bản dịch đã lưu")
-            translation_base, device = saved
-            regions = [Region.model_validate(r) for r in translation_base]
-        base = [r.model_dump(mode="json") for r in regions]
-        edits = self.cache.corrections(key)
-        self.apply_edits(regions, edits)
-        progress("Xóa nét gốc và dàn chữ tiếng Việt")
-        budget = 4 if page.settings.quality == "quality" else 1
+        with ExitStack() as cleanup:
+            release_pending = page.settings.quality == "low"
 
-        def shorten(region):
-            nonlocal budget
-            if budget <= 0 or region.id in edits:
-                return None
-            budget -= 1
-            try:
-                translations, _ = request_translation([region], page.settings, page.context[-900:], glossary, device, True, check)
-                return translations.get(region.id)
-            except (OSError, RuntimeError, ValueError, ValidationError):
-                return None
+            def using_model():
+                nonlocal release_pending
+                if release_pending:
+                    cleanup.callback(unload, page.settings.model)
+                    release_pending = False
 
-        result, count = render(rgb, regions, page.settings, check, shorten)
+            if saved is None:
+                progress("Phát hiện chữ và nhận dạng OCR")
+                regions = self.ocr.regions(rgb, page.settings, check)
+                translatable = [r for r in regions if not r.issue]
+                progress("Dịch hội thoại bằng Ollama local")
+                if translatable:
+                    using_model()
+                device = translate(regions, page.settings, page.context, glossary, check)
+                translation_base = ([r.model_dump(mode="json") for r in regions]
+                                    if translatable and all(r.text for r in translatable) else None)
+            else:
+                progress("Dùng lại bản dịch đã lưu")
+                translation_base, device = saved
+                regions = [Region.model_validate(r) for r in translation_base]
+            base = [r.model_dump(mode="json") for r in regions]
+            edits = self.cache.corrections(key)
+            self.apply_edits(regions, edits)
+            progress("Xóa nét gốc và dàn chữ tiếng Việt")
+            budget = 4 if page.settings.quality == "quality" else 1
+
+            def shorten(region):
+                nonlocal budget
+                if budget <= 0 or region.id in edits:
+                    return None
+                budget -= 1
+                using_model()
+                try:
+                    translations, _ = request_translation(
+                        [region], page.settings, page.context[-900:], glossary, device, True, check)
+                    return translations.get(region.id)
+                except (OSError, RuntimeError, ValueError, ValidationError):
+                    return None
+
+            result, count = render(rgb, regions, page.settings, check, shorten)
         data = png(result, alpha) if count else b""
         if len(data) > MAX_RESULT:
             raise ValueError("Ảnh PNG kết quả vượt 40 MB. Vui lòng chia ảnh trước khi dịch.")

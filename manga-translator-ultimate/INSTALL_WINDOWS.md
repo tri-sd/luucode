@@ -11,7 +11,7 @@ Yêu cầu Chrome hiện hành, Windows App Installer (`winget`) và quyền cà
 ## Máy ít bộ nhớ hoặc CUDA chưa sẵn sàng
 
 - Để **Tự động** dùng GPU nếu Ollama nhận diện được. Nếu có lỗi driver hoặc thiếu VRAM, đổi **Thiết bị** sang **Chỉ CPU**.
-- Chọn **Ít bộ nhớ** để giảm cỡ lô, hạ độ phân giải detector và giải phóng mô hình sau lượt xử lý.
+- Chọn **Ít bộ nhớ** để giảm cỡ lô và hạ độ phân giải quét. Engine dùng một phiên mô hình cho các nhóm thoại trên cùng ảnh rồi giải phóng mô hình khi xử lý xong ảnh.
 - Để giảm tải thêm, chạy **Download Small Model.cmd**, sau đó chọn `qwen2.5:1.5b-instruct-q4_K_M` trong Cài đặt. Mô hình này có chất lượng dịch thấp hơn trên ảnh kiểm thử.
 - Khi rời mạng, cứ giữ Ollama và Local Engine đang chạy. Chrome chỉ dịch những ảnh trình duyệt còn đọc được trên trang, CDN đã tải, hoặc trình đọc HTTP cục bộ.
 

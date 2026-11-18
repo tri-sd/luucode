@@ -60,6 +60,51 @@ def test_glossary_and_retry_keeps_valid_results(monkeypatch):
     assert a.text == 'Haru đến rồi' and b.text == 'Cảm ơn!'
 
 
+def test_exact_short_dialogue_needs_no_retry_after_invalid_translation(monkeypatch):
+    connector = region('r1', 'BESIDES…')
+    sentence = region('r2', 'Besides my friend, nobody saw it.')
+    invitation = region('r3', 'LET’S GO HOME.')
+    calls = []
+
+    def fake(batch, settings, context, glossary, device, **kwargs):
+        calls.append([r.id for r in batch])
+        return {'r2': 'Ngoài bạn tôi, chẳng ai nhìn thấy.'}, {'r1': 'Sai từ nối.', 'r3': 'Mất ý lời rủ.'}
+
+    monkeypatch.setattr(translator, 'request_translation', fake)
+    translator.translate([connector, sentence, invitation], Settings(), '', {}, lambda: None)
+    assert calls == [['r1', 'r2', 'r3']]
+    assert connector.text == 'Vả lại…' and sentence.text == 'Ngoài bạn tôi, chẳng ai nhìn thấy.'
+    assert invitation.text == 'Về nhà thôi.'
+    assert translator.exact_dialogue(connector, {'Besides': 'Ngoài ra'}) is None
+    assert translator.exact_dialogue(invitation, {'home': 'nhà mình'}) is None
+    assert translator.exact_dialogue(sentence, {}) is None
+    assert translator.exact_dialogue(region(text='Besides?'), {}) is None
+
+
+def test_context_prioritizes_recent_dialogue():
+    context = 'First line → Bỏ qua dòng cũ ' * 70 + '\nHaru is here → Haru đã tới.\nStay → Cứ ở lại.'
+    assert translator.prompt_context(context, 'balanced') == 'Haru đã tới.\nCứ ở lại.'
+    assert translator.prompt_context('Good morning → Chào buổi sáng.', 'quality') == (
+        'Good morning → Chào buổi sáng.')
+    assert translator.prompt_context('\n', 'balanced') == '\n'
+
+
+def test_failed_dialogue_is_retried_with_source_context(monkeypatch):
+    contexts = []
+
+    def fake(payload, check):
+        context = json.loads(payload['messages'][-1]['content'])['chapter_context']
+        contexts.append(context)
+        return json.dumps({'r1': 'Chào buổi sáng!' if 'Haru is here' in context else 'Xin chào!'})
+
+    monkeypatch.setattr(translator, 'chat', fake)
+    item = region()
+    translator.translate([item], Settings(), 'Haru is here → Haru đã tới.', {}, lambda: None)
+    assert len(contexts) == 2 and 'Haru is here' not in contexts[0]
+    assert 'Haru is here → Haru đã tới.' in contexts[1]
+    assert item.text == 'Chào buổi sáng!'
+
+
 def test_batch_size_respects_text_length():
     items = [region(f'r{i}', 'a'*460) for i in range(1,6)]
     assert [len(batch) for batch in translator.batches(items,'balanced')] == [2,2,1]
@@ -110,6 +155,37 @@ def test_font_change_reuses_unedited_translation_after_reopen(tmp_path, monkeypa
     changed_context = page.model_copy(update={'settings': Settings(font='italic'), 'context':'Cảnh khác'})
     process(reopened, changed_context)
     assert calls == ['ocr','translate']*3
+
+
+def test_low_memory_unloads_once_after_layout(tmp_path, monkeypatch):
+    engine = pipeline.Engine(Cache(tmp_path/'pages.sqlite3', 1_000_000))
+    raw = pipeline.png(np.full((80,80,3),255,dtype=np.uint8), None)
+    page = PageInput(image=base64.b64encode(raw).decode(), settings=Settings(quality='low'))
+    calls = []
+    monkeypatch.setattr(pipeline, 'installed', lambda model: {'digest':model})
+    monkeypatch.setattr(pipeline.Ocr, 'regions', lambda *args: [region()])
+    monkeypatch.setattr(pipeline, 'unload', lambda model: calls.append('unload'))
+
+    def translate(regions, *args):
+        calls.append('translate')
+        regions[0].text = 'Chào buổi sáng!'
+        return 'cpu'
+
+    def request(*args):
+        calls.append('shorten')
+        return {'r1': 'Chào buổi sáng!'}, {}
+
+    def render(rgb, regions, settings, check, shorten):
+        assert shorten(regions[0])
+        return rgb, 1
+
+    monkeypatch.setattr(pipeline, 'translate', translate)
+    monkeypatch.setattr(pipeline, 'request_translation', request)
+    monkeypatch.setattr(pipeline, 'render', render)
+    result = engine.process(page, lambda: None, lambda _: None)
+    assert not result['cached'] and calls == ['translate', 'shorten', 'unload']
+    assert engine.process(page, lambda: None, lambda _: None)['cached']
+    assert calls == ['translate', 'shorten', 'unload']
 
 
 def test_gpu_error_retries_cpu(monkeypatch):

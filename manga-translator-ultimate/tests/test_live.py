@@ -54,6 +54,7 @@ def test_real_recognition_translation_render_and_cache(lang,name,source,translat
     assert [r['source'] for r in page['regions']] == source
     assert all(expected in region['text'].lower() for expected,region in zip(translations,page['regions'])), page['regions']
     assert page['image'] and page['rendered'] == 3
+    assert 'translation_base' not in page and 'translation_key' not in page
     evidence = os.environ.get('MANGA_EVIDENCE_DIR')
     if evidence:
         folder = Path(evidence)

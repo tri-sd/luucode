@@ -143,7 +143,8 @@ def result(key: str):
     if entry is None:
         raise HTTPException(404, "Ảnh đã bị dọn khỏi cache.")
     data, meta = entry
-    summary = {name: value for name, value in meta.items() if name not in ("base", "settings")}
+    summary = {name: value for name, value in meta.items()
+               if name not in ("base", "settings", "translation_base", "translation_key")}
     return {**summary, "key": key, "image": base64.b64encode(data).decode("ascii") if data else None}
 
 

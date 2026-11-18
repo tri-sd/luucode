@@ -20,6 +20,9 @@ TIME_IN_GREETING = [
     (re.compile(r"\bgood\s?night\b|おやすみ", re.I), re.compile(r"\b(tối|đêm|ngủ)\b", re.I), "Preserve the bedtime reference with ngủ, đêm, or tối."),
 ]
 EN = re.compile(r"\b(the|this|there|what|you|your|hello|good|morning|with|would|are|is|am|and|let's|have|please)\b", re.I)
+ADDITIVE_CONNECTORS = {"besides": "Vả lại", "furthermore": "Hơn nữa",
+                       "moreover": "Hơn nữa", "in addition": "Ngoài ra"}
+EXACT_DIALOGUE = {**ADDITIVE_CONNECTORS, "let's go home": "Về nhà thôi", "let's head home": "Về nhà thôi"}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -79,8 +82,34 @@ def installed(name):
     return found
 
 
+def unload(name):
+    try:
+        local("/api/chat", {"model": name, "messages": [], "keep_alive": 0}, timeout=2)
+    except (OSError, ValueError):
+        # Ollama's short idle timeout releases the model if the call fails.
+        pass
+
+
 def folded(text):
     return " ".join(unicodedata.normalize("NFKC", text).casefold().split()).strip(".!?。！？")
+
+
+def glossary_matches(text, key):
+    term = folded(key)
+    return bool(term and (term in text if JP.search(key) else
+                          re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text)))
+
+
+def exact_dialogue(region, glossary):
+    if region.language != "en":
+        return None
+    source = " ".join(unicodedata.normalize("NFKC", region.source).casefold().replace("’", "'").split())
+    match = re.fullmatch(r"([a-z' ]+?)(\.{3}|[.,!])?", source)
+    if not match or match[1] not in EXACT_DIALOGUE or any(
+            glossary_matches(match[1], key) for key in glossary):
+        return None
+    suffix = "…" if match[2] == "..." else match[2] or ""
+    return EXACT_DIALOGUE[match[1]] + suffix
 
 
 def copied_english(source, translation):
@@ -96,7 +125,7 @@ def dialogue_hint(source, text):
     if source.language != "en":
         return None
     phrase = folded(source.source)
-    if phrase in {"besides","furthermore","moreover","in addition"} and not re.search(
+    if phrase in ADDITIVE_CONNECTORS and not re.search(
             r"hơn nữa|ngoài ra|vả lại|thêm nữa|với lại|huống chi|chưa kể|bên cạnh đó|hơn thế nữa",text,re.I):
         return "Giữ chức năng nối ý bổ sung của ô này, như «Hơn nữa…» hoặc «Vả lại…»."
     if (re.fullmatch(r"[\w -]+ needs? (folks|people|someone|allies|support|help)( on (his|her|their) side)?",phrase)
@@ -108,7 +137,7 @@ def dialogue_hint(source, text):
         return "Giữ hành động giúp đỡ được nói đến trong câu."
     if re.search(r"\ba crime (?:just )?to\b",phrase) and not re.search(
             r"phạm tội|phạm pháp|là (?:một )?tội\b(?!\s+phạm)|tội danh|có tội|trái luật|phạm luật|vi phạm pháp luật",text,re.I):
-        return "Giữ nghĩa hành động bị xem là phạm tội. «A crime» chỉ hành vi."
+        return "Nói hành động bị coi là phạm tội. Dùng mẫu «Chỉ việc … cũng bị coi là phạm tội» khi phù hợp."
     return None
 
 
@@ -125,9 +154,8 @@ def validate(content, batch, glossary):
     for item in values:
         source = inputs[item.id]
         text = " ".join(unicodedata.normalize("NFC", item.text).split())
-        expected = [term for key, term in glossary.items() if folded(key) and
-                    (folded(key) in folded(source.source) if JP.search(key) else
-                     re.search(r"(?<!\w)" + re.escape(folded(key)) + r"(?!\w)", folded(source.source)))]
+        original = folded(source.source)
+        expected = [term for key, term in glossary.items() if glossary_matches(original, key)]
         meaning_hint = dialogue_hint(source,text)
         missed_greeting = next((hint for marker, target, hint in TIME_IN_GREETING
                                 if marker.search(source.source) and not target.search(text)), None)
@@ -165,14 +193,29 @@ def validate(content, batch, glossary):
     return output, rejected
 
 
-def request_translation(batch, settings, context, glossary, device, concise=False, check=lambda: None, notes=None):
+def prompt_context(context, quality):
+    if quality != "quality" and " → " in context:
+        # Reader context has one source → Vietnamese pair per line.
+        # Its Vietnamese half already carries the names and voice of the scene.
+        context = "\n".join(line.split(" → ", 1)[-1] for line in context.splitlines())
+    limit = {"low": 380, "balanced": 620, "quality": 1600}[quality]
+    excerpt = context[-limit:]
+    if len(context) > limit:
+        _, separator, complete = excerpt.partition("\n")
+        if separator and complete:
+            excerpt = complete
+    return excerpt
+
+
+def request_translation(batch, settings, context, glossary, device, concise=False, check=lambda: None,
+                        notes=None, *, full_context=False):
     def speech(region):
         text = region.source
         # All-caps English is a lettering convention on many pages.
         return text.capitalize() if region.language == "en" and text.isupper() and len(text.split()) > 1 else text
 
     prompt = {
-        "chapter_context": context,
+        "chapter_context": prompt_context(context, "quality" if full_context else settings.quality),
         "glossary": glossary,
         "regions": {r.id: speech(r) for r in batch},
     }
@@ -198,7 +241,7 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
         system += " Use a much shorter natural paraphrase without dropping the core meaning."
     text = chat({
         "model": settings.model, "stream": True,
-        "keep_alive": 0 if settings.quality == "low" else "3m",
+        "keep_alive": "45s" if settings.quality == "low" else "3m",
         "format": schema, "options": options,
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": json.dumps(prompt, ensure_ascii=False, separators=(",", ":"))}],
@@ -240,8 +283,11 @@ def translate(regions, settings, context, glossary, check):
                 break
             try:
                 accepted = "\n".join(f"{r.source} → {r.text}" for r in group if r.text)
-                results, rejected = request_translation(batch, settings, (context+"\n"+accepted)[-1600:],
-                                                        glossary, device, check=check, notes=rejected)
+                scene = (context+"\n"+accepted)[-1600:]
+                if attempt == 2 and accepted and settings.quality != "quality":
+                    scene = accepted
+                results, rejected = request_translation(batch, settings, scene, glossary, device,
+                                                        check=check, notes=rejected, full_context=attempt == 1)
             except (ValidationError, ValueError):
                 rejected = {}
                 continue
@@ -257,8 +303,9 @@ def translate(regions, settings, context, glossary, check):
                 raise RuntimeError("Ollama chưa phản hồi hoặc suy luận lỗi. Hãy kiểm tra engine rồi thử lại.") from exc
             remaining = []
             for region in batch:
-                if region.id in results:
-                    region.text = results[region.id]
+                text = results.get(region.id) or exact_dialogue(region, glossary)
+                if text:
+                    region.text = text
                 else:
                     remaining.append(region)
             batch = remaining
