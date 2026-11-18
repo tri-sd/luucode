@@ -98,6 +98,9 @@ def validate(content, batch, glossary):
     ids = [r.id for r in values]
     if len(set(ids)) != len(ids) or set(ids) - inputs.keys():
         raise ValueError("Region ID bị trùng hoặc ngoài danh sách")
+    numbers = re.compile(r"(?<!\w)\d+(?!\w)")
+    source_numbers = {r.id:set(numbers.findall(r.source)) for r in batch}
+    batch_numbers = set().union(*source_numbers.values())
     output, rejected = {}, {}
     for item in values:
         source = inputs[item.id]
@@ -116,6 +119,8 @@ def validate(content, batch, glossary):
             rejected[item.id] = "Dịch lời rủ rê, dùng cách nói như «Đi thôi» hoặc «Mình đi nhé»."
         elif source.language == "en" and re.search(r"\b(go|head|return|come|walk) (back )?home\b", source.source, re.I) and not re.search(r"\bvề\b|\bnhà\b", text, re.I):
             rejected[item.id] = "Giữ ý trở về nhà trong câu."
+        elif set(numbers.findall(text)) & (batch_numbers-source_numbers[item.id]):
+            rejected[item.id] = "Kiểm tra đúng ô thoại. Bản dịch chứa con số xuất hiện ở ô nguồn khác."
         elif missed_greeting:
             rejected[item.id] = missed_greeting
         elif any(folded(term) not in folded(text) for term in expected):

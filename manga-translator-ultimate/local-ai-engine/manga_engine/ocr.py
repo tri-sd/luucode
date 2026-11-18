@@ -234,10 +234,12 @@ class Ocr:
         if verify_lines:
             candidates.append((binary, 11))
             counts = np.count_nonzero(gray[8:-8,8:-8] < min(180, np.median(gray)-30),axis=1)
-            strong = np.pad(counts >= max(3, counts.max()*.24),(8,8))
+            strong = np.pad((counts >= max(3,counts.max()*.21)).astype(np.uint8),(8,8))
+            # Close short gaps inside letters before comparing OCR line coverage.
+            strong = cv2.morphologyEx(strong[:,None],cv2.MORPH_CLOSE,np.ones((5,1),np.uint8))[:,0] != 0
             starts = np.flatnonzero(strong & ~np.r_[False,strong[:-1]])
             ends = np.flatnonzero(strong & ~np.r_[strong[1:],False])+1
-            bands = [(a,b) for a,b in zip(starts,ends) if b-a >= max(3,round(len(strong)*.018))]
+            bands = [(a,b) for a,b in zip(starts,ends) if b-a >= 3]
         best = "", 0
         for image, mode in candidates:
             data = pytesseract.image_to_data(image, lang="eng", config=f"--psm {mode}",
@@ -246,7 +248,8 @@ class Ocr:
             if not usable:
                 continue
             if verify_lines and any(not any(re.search(r"[A-Za-z0-9]",data["text"][i]) and
-                    data["top"][i] <= (a+b)//2 <= data["top"][i]+data["height"][i] for i in usable)
+                    min(b,data["top"][i]+data["height"][i])-max(a,data["top"][i])
+                    >= .55*min(b-a,data["height"][i]) for i in usable)
                     for a,b in bands):
                 continue
             words = [(data["text"][i].strip(),float(data["conf"][i])) for i in usable]
@@ -256,6 +259,25 @@ class Ocr:
                 best = phrase, score
             if score >= .84:
                 break
+        if verify_lines and best[1] < .50 and 2 <= len(bands) <= 18:
+            # Hand lettering can confuse whole-balloon line segmentation.
+            # Recover line by line, but only accept the balloon when all read.
+            recovered = []
+            for index,(a,b) in enumerate(bands):
+                top = (bands[index-1][1]+a)//2 if index else max(0,a-8)
+                bottom = (bands[index+1][0]+b)//2 if index+1 < len(bands) else min(len(gray),b+8)
+                data = pytesseract.image_to_data(gray[top:bottom],lang="eng",config="--psm 7",
+                                                output_type=pytesseract.Output.DICT,timeout=6)
+                words = [(word.strip(),float(conf)) for word,conf in zip(data["text"],data["conf"])
+                         if word.strip() and float(conf) >= 0]
+                if not words or not any(re.search(r"[A-Za-z0-9]",word) for word,_ in words):
+                    break
+                score = sum(conf*len(word) for word,conf in words)/(100*sum(len(word) for word,_ in words))
+                if score < .47:
+                    break
+                recovered.append((" ".join(word for word,_ in words), score))
+            if len(recovered) == len(bands):
+                return " ".join(word for word,_ in recovered), float(np.mean([score for _,score in recovered]))
         return best
 
     def regions(self, rgb, settings, check):
@@ -276,7 +298,8 @@ class Ocr:
             a, t, c, d = max(0,xx.min()-5), max(0,yy.min()-5), min(r-x,xx.max()+6), min(b-y,yy.max()+6)
             crop = np.where(inside[t:d,a:c,None] != 0, patch[t:d,a:c], background).astype(np.uint8)
             lines = [polys[i] for i in members]
-            vertical = sum(np.ptp(p[:,1]) > 1.4*np.ptp(p[:,0]) for p in lines) > len(lines)/2
+            vertical = (sum(np.ptp(p[:,1]) > 1.4*np.ptp(p[:,0]) for p in lines) > len(lines)/2
+                        if lines else settings.language == "ja" and (d-t) > 1.4*(c-a))
             grouped.append(((x+a,y+t,x+c,y+d), bubble, (lines, vertical, outline, crop)))
             claimed.update(members)
 
@@ -339,7 +362,11 @@ class Ocr:
             region.source = text[:500]
             region.confidence = score
             minimum = .55 if language == "ja" else .50
-            if score < minimum or not text or (language == "ja" and not JP.search(text)):
+            if not region.polygons:
+                minimum = .80 if language == "ja" else .67
+            if len(text) > 500:
+                region.issue = "Nội dung vượt giới hạn một vùng, cần kiểm tra thủ công."
+            elif score < minimum or not text or (language == "ja" and not JP.search(text)):
                 region.issue = "OCR không đủ tin cậy. Vùng này được giữ nguyên."
 
         if settings.language == "en" and settings.quality != "low" and len(to_read) > 1:

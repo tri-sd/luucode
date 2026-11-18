@@ -1,6 +1,13 @@
 # Kiểm thử hồi quy — 18/11/2026
 
 
+
+## Bản 1.3
+
+**20 bài đạt** trên Linux với Chromium và Qwen3 local thật. Hai mẫu Anh/Nhật đều giữ 3/3 vùng thoại, cùng bản dịch đã lưu trong phép đo 1.2. Ca hồi quy mới mô phỏng một ô sáng lớn bị cắt ở ba mép ảnh. Bộ dò được cố ý chỉ trả ô bên cạnh. Luồng quét bổ sung đọc đủ cả bảy dòng trong ô lớn, xóa các nét gốc trong mẫu, giữ vùng tranh giữa hai ô và kết xuất đúng hai bản dịch. Một bài riêng kiểm tra bộ dịch từ chối việc đưa số 13 từ ô nguồn sang ô bên cạnh. Các bài cuộn, cache và chèn ảnh của Chromium đều đạt.
+
+[Chi tiết cập nhật và phép đo](docs/UPDATE-1.3.md). Ảnh hồi quy được tạo theo hình dạng và chữ trong ảnh lỗi. Chưa chạy trên ảnh gốc của Comix trong Cốc Cốc và RTX 3050 của người dùng.
+
 ## Bản 1.2
 
 **18 bài đạt** trên Linux với Qwen3 thật và Chrome for Testing. Hai fixture vẫn đọc, dịch và vẽ đủ 3/3 vùng Anh và 3/3 vùng Nhật. Mẫu hồi quy ô bị cắt sát cạnh có bốn dòng, trong đó detector cố ý chỉ tìm hai. Test xác nhận một kết quả dịch, đủ bốn dòng OCR, các nét gốc đều được xóa trong mẫu và vùng hình ngoài ô giữ nguyên. Kiểm tra mới từ chối bản dịch lời rủ bị đổi thành lệnh hoặc mất đích đến. Chromium tiếp tục vượt qua kiểm tra cuộn, cache, zoom và thay trang.

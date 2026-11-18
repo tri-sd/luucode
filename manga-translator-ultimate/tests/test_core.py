@@ -149,8 +149,9 @@ def test_recovers_undetected_balloon_line_without_erasing_art(monkeypatch):
     box = np.array([(419,88),(520,88),(520,123),(419,123)], dtype=np.int32)
     ocr = Ocr()
     monkeypatch.setattr(ocr, 'detect', lambda *args: [box])
-    item, = ocr.regions(rgb, Settings(language='en'), lambda: None)
-    assert item.source == 'GOOD MORNING!'
+    regions = ocr.regions(rgb, Settings(language='en'), lambda: None)
+    item = next(region for region in regions if region.source == 'GOOD MORNING!')
+    assert 'THANK YOU!' in {region.source for region in regions}
     assert item.balloon_outline
     (x,y,r,d), repaired, _, mask = erase_patch(rgb,item,False)
     assert y < 148 < d
@@ -211,3 +212,42 @@ def test_invitation_preserves_destination_and_tone():
     output, _ = translator.validate(
         '{"translations":[{"id":"r1","text":"Mình về nhà thôi!"}]}',[item],{})
     assert output == {'r1':'Mình về nhà thôi!'}
+
+
+def test_large_strip_balloon_recovered_when_detector_misses_every_line(monkeypatch):
+    from PIL import ImageDraw
+    from manga_engine.ocr import Ocr
+    from manga_engine.render import font
+    page = Image.new('RGB',(540,480),(35,35,35))
+    draw = ImageDraw.Draw(page)
+    draw.ellipse((-55,-100,248,576),fill='white',outline='black',width=4)
+    lines = ['THUS, WE','HAVE MADE','THE PROMPT','DECISION TO','ORGANIZE A','PROVISIONAL','13 CROWNS.']
+    for i,line in enumerate(lines):
+        draw.text((117,144+i*27),line,fill='black',font=font('bold',20),anchor='mm')
+    draw.ellipse((314,80,517,250),fill='white',outline='black',width=4)
+    draw.text((415,160),'THANK YOU!',fill='black',font=font('bold',20),anchor='mm')
+    original = np.asarray(page)
+    ocr = Ocr()
+    monkeypatch.setattr(ocr,'detect',lambda *args:[
+        np.array([[344,146],[492,146],[492,175],[344,175]],np.int32)
+    ])
+    regions = ocr.regions(original,Settings(language='en'),lambda:None)
+    assert len(regions) == 2
+    left,right = sorted(regions,key=lambda r:r.box[0])
+    assert left.source == ' '.join(lines) and right.source == 'THANK YOU!'
+    assert not left.polygons and left.balloon_outline and not left.issue
+    (x,y,r,b), cleared, _, _ = erase_patch(original,left,False)
+    ink = original[131:321,25:220,0] < 180
+    assert np.min(cleared[131-y:321-y,25-x:220-x,0][ink]) > 235
+    left.text = 'Vì vậy, chúng tôi quyết định sớm lập Hội đồng 13 Vương miện lâm thời.'
+    right.text = 'Xin cảm ơn!'
+    output,count = render(original,regions,Settings(language='en'),lambda:None)
+    assert count == 2
+    assert np.array_equal(original[:,253:311],output[:,253:311])
+
+
+def test_validation_rejects_number_taken_from_neighboring_balloon():
+    items = [region('r1','We decided to appoint 13 crowns.'),region('r2','Thank you for coming.')]
+    data = '{"translations":[{"id":"r1","text":"Chúng tôi quyết định bổ nhiệm 13 vị."},{"id":"r2","text":"Chúng tôi bổ nhiệm 13 vị."}]}'
+    accepted,rejected = translator.validate(data,items,{})
+    assert set(accepted) == {'r1'} and set(rejected) == {'r2'}

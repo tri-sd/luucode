@@ -96,6 +96,35 @@ def layout(text, rect, style, scale, ellipse):
         return None
     min_size = max(10, round(11*min(scale, 1)))
     max_size = min(100, round(max(18, height*.70)*scale), height-2)
+    if not ellipse:
+        # For a constant line width, greedy wrapping minimizes the number of
+        # lines. Find the largest readable font without scanning every size.
+        best = None
+        while min_size <= max_size:
+            size = (min_size+max_size)//2
+            face = font(style,size)
+            asc,desc = face.getmetrics()
+            line_height = max(size+2,round((asc+desc)*.9))
+            lines = []
+            line = ""
+            for word in words:
+                candidate = f"{line} {word}" if line else word
+                if face.getlength(candidate) <= width-4:
+                    line = candidate
+                elif line and face.getlength(word) <= width-4:
+                    lines.append(line)
+                    line = word
+                else:
+                    break
+            else:
+                lines.append(line)
+                if len(lines)*line_height <= height:
+                    top = y+(height-len(lines)*line_height)//2
+                    best = face, [(round((x+r)/2),top+(i+.5)*line_height,text) for i,text in enumerate(lines)]
+                    min_size = size+1
+                    continue
+            max_size = size-1
+        return best
     for size in range(max_size, min_size-1, -1):
         face = font(style, size)
         asc, desc = face.getmetrics()

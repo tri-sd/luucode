@@ -14,7 +14,7 @@ from .translate import installed, request_translation, translate
 
 MAX_IMAGE = 22_020_096
 MAX_RESULT = 40_000_000
-ALGORITHM = "ppocr4:tesseract5:mangaocr-int8-v1:balloon-atomic-v12"
+ALGORITHM = "ppocr4:tesseract5:mangaocr-int8-v1:balloon-coverage-v13"
 
 
 def read_image(raw):
