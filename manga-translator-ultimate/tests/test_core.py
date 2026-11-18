@@ -1,4 +1,6 @@
+import base64
 import json
+import sqlite3
 import time
 from urllib.error import HTTPError
 
@@ -7,12 +9,13 @@ import numpy as np
 from PIL import Image
 import pytest
 
+import manga_engine.engine as pipeline
+import manga_engine.translate as translator
 from manga_engine.cache import Cache
-from manga_engine.contracts import Region, Settings
+from manga_engine.contracts import PageInput, Region, Settings
 from manga_engine.jobs import Jobs
 from manga_engine.ocr import normalize, ordered, tiles
 from manga_engine.render import erase_patch, layout, render
-import manga_engine.translate as translator
 
 
 def region(id='r1', text='GOOD MORNING!', language='en'):
@@ -61,6 +64,52 @@ def test_batch_size_respects_text_length():
     items = [region(f'r{i}', 'a'*460) for i in range(1,6)]
     assert [len(batch) for batch in translator.batches(items,'balanced')] == [2,2,1]
     assert [len(batch) for batch in translator.batches(items,'low')] == [1,1,1,1,1]
+    short = [region(f'r{i}', 'Thank you!') for i in range(1,11)]
+    assert [len(batch) for batch in translator.batches(short[:9],'balanced')] == [9]
+    assert [len(batch) for batch in translator.batches(short,'balanced')] == [7,3]
+    for item in short[:8]:
+        item.source = 'A'*145
+    assert [len(batch) for batch in translator.batches(short[:8],'balanced')] == [7,1]
+
+
+def test_font_change_reuses_unedited_translation_after_reopen(tmp_path, monkeypatch):
+    path = tmp_path/'pages.sqlite3'
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE pages (key TEXT PRIMARY KEY, original BLOB NOT NULL, output BLOB NOT NULL,"
+                   "metadata TEXT NOT NULL, size INTEGER NOT NULL, at REAL NOT NULL)")
+        db.execute("INSERT INTO pages VALUES ('old', x'61', x'62', '{}', 4, 0)")
+    engine = pipeline.Engine(Cache(path, 1_000_000))
+    assert engine.cache.page('old')[0] == b'b'
+    raw = pipeline.png(np.full((80,80,3),255,dtype=np.uint8), None)
+    page = PageInput(image=base64.b64encode(raw).decode(), settings=Settings(), context='Cảnh đầu')
+    calls = []
+    monkeypatch.setattr(pipeline, 'installed', lambda model: {'digest':model})
+    def read(self, *args):
+        calls.append('ocr')
+        return [region()]
+    def translate(regions, *args):
+        calls.append('translate')
+        regions[0].text = 'Chào buổi sáng!'
+        return 'cpu'
+    monkeypatch.setattr(pipeline.Ocr, 'regions', read)
+    monkeypatch.setattr(pipeline, 'translate', translate)
+    monkeypatch.setattr(pipeline, 'render', lambda rgb, *args: (rgb,1))
+    def process(engine, page):
+        key = engine.process(page, lambda:None, lambda _:None)['key']
+        return key, engine.cache.page(key)[1]
+    key, first = process(engine, page)
+    engine.cache.put(key, raw, raw, first, {'r1': {'text':'Lời sửa tay'}})
+
+    reopened = pipeline.Engine(Cache(path, 1_000_000))
+    styled = page.model_copy(update={'settings': Settings(font='bold')})
+    _, persisted = process(reopened, styled)
+    assert calls == ['ocr','translate']
+    assert persisted['regions'][0]['text'] == 'Chào buổi sáng!'
+    assert persisted['settings']['font'] == 'bold'
+    process(reopened, styled.model_copy(update={'force': True}))
+    changed_context = page.model_copy(update={'settings': Settings(font='italic'), 'context':'Cảnh khác'})
+    process(reopened, changed_context)
+    assert calls == ['ocr','translate']*3
 
 
 def test_gpu_error_retries_cpu(monkeypatch):
@@ -348,19 +397,22 @@ def test_source_wrap_preserves_honorifics_and_true_hyphens():
 def test_translation_retains_meaning_in_adjacent_clauses():
     items = [region('r1','Besides...'),
              region('r2','Sullivan-sama needs folks on his side.'),
-             region('r3',"I'll be even more powerless to help him than I am now.")]
+             region('r3',"I'll be even more powerless to help him than I am now."),
+             region('r4',"It'd make it look like it's a crime just to associate with him!")]
     wrong = {"translations": [
         {'id':'r1','text':'Mà chỉ thế thôi!'},
         {'id':'r2','text':'Sullivan-sama sẽ chẳng còn ai đứng về phía mình.'},
         {'id':'r3','text':'Tôi sẽ càng bất lực hơn bây giờ.'},
+        {'id':'r4','text':'Trông như một tội phạm vì liên quan đến anh ấy!'},
     ]}
     accepted, rejected = translator.validate(json.dumps(wrong), items, {})
-    assert not accepted and set(rejected) == {'r1','r2','r3'}
+    assert not accepted and set(rejected) == {'r1','r2','r3','r4'}
     correct = {"translations": [
         {'id':'r1','text':'Hơn nữa…'},
         {'id':'r2','text':'Ngài Sullivan cần người đứng về phía mình.'},
         {'id':'r3','text':'Tôi sẽ càng bất lực hơn khi muốn giúp anh ấy.'},
+        {'id':'r4','text':'Cứ như thể chỉ cần qua lại với anh ấy là phạm tội vậy!'},
     ]}
     accepted, rejected = translator.validate(json.dumps(correct), items, {})
-    assert set(accepted) == {'r1','r2','r3'} and not rejected
+    assert set(accepted) == {'r1','r2','r3','r4'} and not rejected
     assert translator.dialogue_hint(region(text='No one needs help.'), 'Không ai cần giúp.') is None

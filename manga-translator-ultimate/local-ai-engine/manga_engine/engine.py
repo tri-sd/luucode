@@ -69,10 +69,23 @@ class Engine:
         check()
         rgb, alpha = read_image(raw)
         height, width = rgb.shape[:2]
-        progress("Phát hiện chữ và nhận dạng OCR")
-        regions = self.ocr.regions(rgb, page.settings, check)
-        progress("Dịch hội thoại bằng Ollama local")
-        device = translate(regions, page.settings, page.context, glossary, check)
+        translation_identity = json.dumps(
+            [ALGORITHM, digest, model_digest, page.settings.model_dump(exclude={"font", "font_scale"}),
+             glossary, page.context], sort_keys=True)
+        translation_key = hashlib.sha256(translation_identity.encode()).hexdigest()
+        saved = None if page.force else self.cache.translation(translation_key)
+        if saved is None:
+            progress("Phát hiện chữ và nhận dạng OCR")
+            regions = self.ocr.regions(rgb, page.settings, check)
+            translatable = [r for r in regions if not r.issue]
+            progress("Dịch hội thoại bằng Ollama local")
+            device = translate(regions, page.settings, page.context, glossary, check)
+            translation_base = ([r.model_dump(mode="json") for r in regions]
+                                if translatable and all(r.text for r in translatable) else None)
+        else:
+            progress("Dùng lại bản dịch đã lưu")
+            translation_base, device = saved
+            regions = [Region.model_validate(r) for r in translation_base]
         base = [r.model_dump(mode="json") for r in regions]
         edits = self.cache.corrections(key)
         self.apply_edits(regions, edits)
@@ -104,6 +117,8 @@ class Engine:
                 "settings": page.settings.model_dump(), "width": width, "height": height,
                 "fingerprint": digest, "rendered": count, "model_digest": model_digest,
                 "device": device, "edits": list(edits)}
+        if translation_base is not None:
+            meta.update(translation_key=translation_key, translation_base=translation_base)
         self.cache.put(key, raw, data, meta)
         return {"key": key, "cached": False}
 

@@ -1,4 +1,8 @@
-# Kiểm thử hồi quy — 18/11/2026
+# Kiểm thử hồi quy
+
+## Bản 1.6
+
+**25 bài đạt** trên Linux với Chromium và Qwen3 local. Trên ảnh gốc chương 466, cả chín ô từng báo lỗi vẫn hiện bản dịch. Ca trang 7 kiểm tra riêng nghĩa của câu cuối sau khi gộp thêm ô vào lượt dịch. Ca đổi kiểu chữ kiểm tra việc dùng lại bản dịch sau khi mở lại cơ sở dữ liệu, xử lý lại khi thay ngữ cảnh và quét lại khi người dùng yêu cầu. Đổi sang chữ đậm trên ảnh mẫu tiếng Anh mất 0,61 giây qua API, kể cả chờ trạng thái tác vụ, và giữ đủ 3/3 ô. Xem [cách cập nhật](docs/UPDATE-1.6.md).
 
 ## Bản 1.5
 

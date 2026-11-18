@@ -69,6 +69,13 @@ def test_real_recognition_translation_render_and_cache(lang,name,source,translat
         assert api('/result/'+saved['key'])['regions'][0]['text'] == edit['text']
         run('/edit/'+page['key'],{'edit':edit,'reset':True})
         assert api('/result/'+page['key'])['regions'][0]['text'] == page['regions'][0]['text']
+        payload['settings']['font'] = 'bold'
+        start = time.monotonic()
+        styled = run('/jobs',payload)
+        bold = api('/result/'+styled['key'])
+        print(f'Font redraw {time.monotonic()-start:.2f}s, {bold["rendered"]} regions')
+        assert bold['rendered'] == 3 and bold['image'] != page['image']
+        assert [r['text'] for r in bold['regions']] == [r['text'] for r in page['regions']]
 
 
 def test_auth_origin_audit():

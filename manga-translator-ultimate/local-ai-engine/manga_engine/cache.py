@@ -15,13 +15,20 @@ class Cache:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS pages (
                     key TEXT PRIMARY KEY, original BLOB NOT NULL, output BLOB NOT NULL,
-                    metadata TEXT NOT NULL, size INTEGER NOT NULL, at REAL NOT NULL
+                    metadata TEXT NOT NULL, size INTEGER NOT NULL, at REAL NOT NULL,
+                    translation_key TEXT
                 );
                 CREATE TABLE IF NOT EXISTS corrections (
                     key TEXT PRIMARY KEY, payload TEXT NOT NULL, at REAL NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             """)
+            db.execute("BEGIN IMMEDIATE")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(pages)")}
+            if "translation_key" not in columns:
+                db.execute("ALTER TABLE pages ADD COLUMN translation_key TEXT")
+            db.execute("CREATE INDEX IF NOT EXISTS pages_translation ON pages(translation_key, at)"
+                       " WHERE translation_key IS NOT NULL")
 
     @contextmanager
     def connection(self):
@@ -50,6 +57,15 @@ class Cache:
             row = db.execute("SELECT payload FROM corrections WHERE key=?", (key,)).fetchone()
             return json.loads(row[0]) if row else {}
 
+    def translation(self, key):
+        with self.connection() as db:
+            row = db.execute("SELECT metadata FROM pages WHERE translation_key=? ORDER BY at DESC LIMIT 1",
+                             (key,)).fetchone()
+            if row:
+                metadata = json.loads(row[0])
+                return metadata["translation_base"], metadata["device"]
+            return None
+
     def put(self, key, original, output, metadata, edits=None):
         encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
         size = len(original)+len(output)+len(encoded.encode())
@@ -57,8 +73,10 @@ class Cache:
             raise ValueError("Kết quả vượt giới hạn dung lượng cache.")
         at = time.time()
         with self.connection() as db:
-            db.execute("INSERT OR REPLACE INTO pages VALUES (?, ?, ?, ?, ?, ?)",
-                       (key, original, output, encoded, size, at))
+            db.execute("""INSERT OR REPLACE INTO pages
+                       (key, original, output, metadata, size, at, translation_key)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       (key, original, output, encoded, size, at, metadata.get("translation_key")))
             if edits is not None:
                 if edits:
                     db.execute("INSERT OR REPLACE INTO corrections VALUES (?,?,?)",

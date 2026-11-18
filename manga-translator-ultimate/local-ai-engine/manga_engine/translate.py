@@ -106,6 +106,9 @@ def dialogue_hint(source, text):
     if re.search(r"\b(?:to|can|could) help (him|her|them)\b",phrase) and not re.search(
             r"giúp|hỗ trợ|đỡ đần|cứu|ra tay",text,re.I):
         return "Giữ hành động giúp đỡ được nói đến trong câu."
+    if re.search(r"\ba crime (?:just )?to\b",phrase) and not re.search(
+            r"phạm tội|phạm pháp|là (?:một )?tội\b(?!\s+phạm)|tội danh|có tội|trái luật|phạm luật|vi phạm pháp luật",text,re.I):
+        return "Giữ nghĩa hành động bị xem là phạm tội. «A crime» chỉ hành vi."
     return None
 
 
@@ -208,12 +211,16 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
 
 def batches(regions, quality):
     count, limit = {"low": (4, 650), "balanced": (7, 1050), "quality": (9, 1350)}[quality]
+    eligible = [region for region in regions if not region.issue]
     batch, chars = [], 0
-    for region in regions:
-        if region.issue:
-            continue
+    for index, region in enumerate(eligible):
         size = len(region.source)
-        if batch and (len(batch) >= count or chars + size > limit):
+        # Keep a short tail with its dialogue when it fits the same text limit.
+        # Two extra IDs at most, within the existing quality-mode batch size.
+        tail = len(eligible) - index
+        absorb_tail = (quality == "balanced" and len(batch) + tail <= 9 and tail <= 2
+                       and chars + sum(len(r.source) for r in eligible[index:]) <= limit)
+        if batch and (chars + size > limit or (len(batch) >= count and not absorb_tail)):
             yield batch
             batch, chars = [], 0
         batch.append(region)
