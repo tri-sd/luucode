@@ -6,28 +6,53 @@ export type MangaImage = HTMLImageElement | HTMLCanvasElement;
 export interface ReaderAdapter {
   matches(url: URL): boolean;
   candidates(root: Document | Element): Iterable<MangaImage>;
-  accepts(image: MangaImage): boolean;
+  accepts(image: MangaImage, shortStrip?: boolean): boolean;
 }
 
 const generic: ReaderAdapter = {
   matches: () => true,
   candidates: root => root.querySelectorAll<MangaImage>('img,canvas'),
-  accepts: element => {
+  accepts: (element, shortStrip = false) => {
     if (element.hasAttribute('data-mtu-overlay') ||
         element.closest('header,nav,footer,aside,[role="banner"],[role="advertisement"],[aria-hidden="true"]')) return false;
     if (/(^|[\s_-])(banner|advert|avatar|logo|thumbnail|sponsor|ads?)([\s_-]|$)/i.test(element.className.toString())) return false;
     const r = element.getBoundingClientRect();
     const [nw, nh] = dimensions(element);
-    if (nw && nh && (nw < 240 || nh < 200 || nw/nh > 3.8)) return false;
-    return r.width >= Math.min(250, innerWidth*.42) && (r.height >= 175 ||
+    if (nw && nh && (nw < 240 || nh < (shortStrip ? 36 : 200) || nw/nh > (shortStrip ? 26 : 3.8))) return false;
+    return r.width >= Math.min(250, innerWidth*.42) && (r.height >= (shortStrip ? 18 : 175) ||
       (!ready(element) && element instanceof HTMLImageElement && Boolean(element.dataset.src || element.src)));
   },
 };
 const adapters: ReaderAdapter[] = [generic];
 
-export function scan(root: Document | Element): MangaImage[] {
+export function scan(root: Document | Element, knownWidths: readonly number[] = []): MangaImage[] {
   const adapter = adapters.find(a => a.matches(new URL(location.href))) ?? generic;
-  return Array.from(adapter.candidates(root)).filter(i => adapter.accepts(i));
+  const candidates = Array.from(adapter.candidates(root));
+  const standard = new Set(candidates.filter(image => adapter.accepts(image)));
+  const peers = new Map<Element, number[]>();
+  function containers(image: MangaImage) {
+    const parents: Element[] = [];
+    let parent = image.parentElement;
+    while (parent && parent !== document.body && parents.length < 3) {
+      parents.push(parent);
+      parent = parent.parentElement;
+    }
+    return parents;
+  }
+  for (const image of standard) {
+    const [width] = dimensions(image);
+    if (!width) continue;
+    for (const parent of containers(image)) {
+      const widths = peers.get(parent) ?? [];
+      if (!widths.includes(width)) widths.push(width);
+      peers.set(parent, widths);
+    }
+  }
+  return candidates.filter(image => standard.has(image) || (
+    ready(image) && adapter.accepts(image, true) &&
+    (knownWidths.some(width => Math.abs(dimensions(image)[0]/width-1) < .18) ||
+     containers(image).some(parent => peers.get(parent)?.some(width => Math.abs(dimensions(image)[0]/width-1) < .18)))
+  ));
 }
 export function ready(element: MangaImage): boolean {
   return element instanceof HTMLImageElement ? element.complete && element.naturalWidth > 0 :
@@ -56,7 +81,7 @@ function asCanvas(element: MangaImage): Promise<string> {
     blob => blob ? resolve(blob) : reject(new Error('Chrome không đọc được pixel của ảnh.')), 'image/png')).then(base64);
 }
 
-export async function capture(element: MangaImage, url: string, signal: AbortSignal): Promise<string> {
+export async function capture(element: MangaImage | null, url: string, signal: AbortSignal): Promise<string> {
   if (element instanceof HTMLCanvasElement) return asCanvas(element);
   const parsed = new URL(url, location.href);
   if (!['http:', 'https:', 'blob:', 'data:'].includes(parsed.protocol)) throw new Error('Định dạng địa chỉ ảnh không được hỗ trợ.');
@@ -66,11 +91,12 @@ export async function capture(element: MangaImage, url: string, signal: AbortSig
     return await base64(await responseBlob(response));
   } catch {
     signal.throwIfAborted();
-    try { return await asCanvas(element); }
-    catch {
+    try {
+      if (element) return await asCanvas(element);
+    } catch {
       signal.throwIfAborted();
-      if (['http:', 'https:'].includes(parsed.protocol)) return fetchImage(parsed.href);
-      throw new Error('Chrome không cho phép đọc ảnh này.');
     }
+    if (['http:', 'https:'].includes(parsed.protocol)) return fetchImage(parsed.href);
+    throw new Error('Chrome không cho phép đọc ảnh này.');
   }
 }

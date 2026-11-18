@@ -34,10 +34,15 @@ def lettering_clusters(components, width, height):
     return False
 
 
-def group_light_balloons(gray, boxes):
+def group_light_balloons(gray, boxes, *, separate_leaks=False):
     height, width = gray.shape
     # Manga lettering typically leaves most of each detected box as background.
-    _, labels, stats, _ = cv2.connectedComponentsWithStats((gray >= 218).astype(np.uint8), connectivity=4)
+    bright = (gray >= 218).astype(np.uint8)
+    if separate_leaks:
+        # Tear narrow bridges across gaps in a panel/balloon border.
+        bright = cv2.morphologyEx(bright, cv2.MORPH_OPEN,
+                                  cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(7,7)))
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(bright, connectivity=4)
     by_label = {}
     for index, (x, y, r, b) in enumerate(boxes):
         a, c = max(0,x-3), max(0,y-3)
@@ -51,7 +56,9 @@ def group_light_balloons(gray, boxes):
     sizes = stats[:, 2:4]
     plausible = (sizes.min(axis=1) >= 21) & (stats[:,4] >= sizes.prod(axis=1)*.31)
     plausible[0] = False
-    for label in np.flatnonzero(plausible):
+    for label in by_label if separate_leaks else np.flatnonzero(plausible):
+        if not plausible[label]:
+            continue
         members = by_label.get(label, [])
         x,y,w,h,area = stats[label]
         edges = (x == 0, y == 0, x+w == width, y+h == height)

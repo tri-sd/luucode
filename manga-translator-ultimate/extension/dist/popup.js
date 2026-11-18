@@ -93,7 +93,12 @@
         const progress = el("progress");
         progress.max = Math.max(1, status.found);
         progress.value = status.done;
-        el("phase").textContent = status.phase || (status.paused ? "\u0110\xE3 t\u1EA1m d\u1EEBng" : status.regions ? status.regions + " v\xF9ng c\u1EA7n ki\u1EC3m tra ho\u1EB7c s\u1EEDa" : "");
+        const notes = status.regions ? status.regions + " v\xF9ng c\u1EA7n ki\u1EC3m tra ho\u1EB7c s\u1EEDa" : "";
+        el("phase").textContent = status.paused ? "\u0110\xE3 t\u1EA1m d\u1EEBng" : status.phase || (status.batch === "collecting" ? "Cu\u1ED9n \u0111\u1EBFn cu\u1ED1i ch\u01B0\u01A1ng r\u1ED3i b\u1EA5m d\u1ECBch " + status.collected + " \u1EA3nh." : status.batch === "complete" ? "\u0110\xE3 x\u1EED l\xFD xong h\xE0ng \u0111\u1EE3i" + (notes ? " \xB7 " + notes : "") : notes);
+        const collect = el("collect");
+        collect.disabled = status.batch === "running" || status.batch === "collecting" && status.collected === 0;
+        collect.textContent = status.batch === "collecting" ? "D\u1ECBch " + status.collected + " \u1EA3nh \u0111\xE3 thu th\u1EADp" : status.batch === "running" ? "\u0110ang d\u1ECBch c\xE1c \u1EA3nh \u0111\xE3 thu th\u1EADp" : status.batch === "complete" && status.errors ? "Th\u1EED l\u1EA1i \u1EA3nh l\u1ED7i" : "Thu th\u1EADp \u1EA3nh ch\u01B0\u01A1ng";
+        el("chapter").hidden = status.batch === "collecting" || status.batch === "running";
         el("pause").textContent = status.paused ? "Ti\u1EBFp t\u1EE5c" : "T\u1EA1m d\u1EEBng";
         el("auto").checked = status.auto;
         el("show").checked = status.showing;
@@ -146,6 +151,7 @@
       for (const key of ["current", "retry", "edit"]) el(key).onclick = () => run(key);
       el("settings").onclick = () => void chrome.runtime.openOptionsPage();
       el("pause").onclick = () => run(last?.paused ? "resume" : "pause");
+      el("collect").onclick = () => run(last?.batch === "collecting" || last?.batch === "complete" && last.errors ? "batch" : "collect");
       el("chapter").onclick = () => {
         if (!origin) return;
         if (el("auto").checked) requestReader(origin);
@@ -162,7 +168,7 @@
         const origins = (last?.hosts ?? []).map((host) => host + "/*");
         if (!origins.length) return;
         void chrome.permissions.request({ origins }).then((granted) => {
-          if (granted) run("chapter");
+          if (granted && last?.batch !== "collecting") run(last?.batch && last.batch !== "idle" ? "batch" : "chapter");
         }).catch((error) => message("message", errorText(error)));
       };
       for (const key of ["language", "quality"]) {
@@ -174,7 +180,7 @@
       });
       void inject().catch((error) => {
         message("message", errorText(error));
-        for (const key of ["chapter", "current", "pause", "retry", "edit", "show", "auto"])
+        for (const key of ["collect", "chapter", "current", "pause", "retry", "edit", "show", "auto"])
           el(key).disabled = true;
       });
       void health();

@@ -251,3 +251,30 @@ def test_validation_rejects_number_taken_from_neighboring_balloon():
     data = '{"translations":[{"id":"r1","text":"Chúng tôi quyết định bổ nhiệm 13 vị."},{"id":"r2","text":"Chúng tôi bổ nhiệm 13 vị."}]}'
     accepted,rejected = translator.validate(data,items,{})
     assert set(accepted) == {'r1'} and set(rejected) == {'r2'}
+
+
+def test_rescans_leaking_balloon_and_repairs_wrapped_words(monkeypatch):
+    from PIL import ImageDraw
+    from manga_engine.ocr import Ocr, join_english_lines
+    from manga_engine.render import font
+
+    page = Image.new('RGB', (400,340), 'white')
+    draw = ImageDraw.Draw(page)
+    draw.ellipse((54,28,295,318), outline='black', width=3)
+    # Simulate a small gap where the outline crosses a bright panel boundary.
+    draw.rectangle((47,171,61,173), fill='white')
+    for i,line in enumerate(('TO INVESTI-', 'GATE THE', 'RELATION-', 'SHIP')):
+        draw.text((168,120+i*27),line,fill='black',font=font('bold',20),anchor='mm')
+    original = np.asarray(page)
+    engine = Ocr()
+    monkeypatch.setattr(engine,'detect',lambda *args:[
+        np.array([[92,y-12],[249,y-12],[249,y+12],[92,y+12]],np.int32) for y in (120,147,174,201)
+    ])
+    item, = engine.regions(original, Settings(language='en'), lambda:None)
+    assert item.balloon_outline and not item.issue
+    assert item.source == 'TO INVESTIGATE THE RELATIONSHIP'
+    item.text = 'Để điều tra mối quan hệ'
+    output, count = render(original, [item], Settings(language='en'), lambda:None)
+    assert count == 1
+    assert np.array_equal(original[:, :50], output[:, :50])
+    assert join_english_lines(['SULLIVAN-', 'SAMA']) == 'SULLIVAN-SAMA'

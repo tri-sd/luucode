@@ -14,8 +14,16 @@ function show(status: Status) {
   const progress = el<HTMLProgressElement>('progress');
   progress.max = Math.max(1,status.found);
   progress.value = status.done;
-  el('phase').textContent = status.phase || (status.paused ? 'Đã tạm dừng' :
-    status.regions ? status.regions+' vùng cần kiểm tra hoặc sửa' : '');
+  const notes = status.regions ? status.regions+' vùng cần kiểm tra hoặc sửa' : '';
+  el('phase').textContent = status.paused ? 'Đã tạm dừng' : status.phase || (
+    status.batch === 'collecting' ? 'Cuộn đến cuối chương rồi bấm dịch '+status.collected+' ảnh.' :
+    status.batch === 'complete' ? 'Đã xử lý xong hàng đợi'+(notes ? ' · '+notes : '') : notes);
+  const collect = el<HTMLButtonElement>('collect');
+  collect.disabled = status.batch === 'running' || (status.batch === 'collecting' && status.collected === 0);
+  collect.textContent = status.batch === 'collecting' ? 'Dịch '+status.collected+' ảnh đã thu thập' :
+    status.batch === 'running' ? 'Đang dịch các ảnh đã thu thập' :
+    status.batch === 'complete' && status.errors ? 'Thử lại ảnh lỗi' : 'Thu thập ảnh chương';
+  el('chapter').hidden = status.batch === 'collecting' || status.batch === 'running';
   el('pause').textContent = status.paused ? 'Tiếp tục' : 'Tạm dừng';
   el<HTMLInputElement>('auto').checked = status.auto;
   el<HTMLInputElement>('show').checked = status.showing;
@@ -66,6 +74,8 @@ function run(action: Command, value?: unknown) {
 for (const key of ['current','retry','edit'] as const) el(key).onclick = () => run(key);
 el('settings').onclick = () => void chrome.runtime.openOptionsPage();
 el('pause').onclick = () => run(last?.paused ? 'resume' : 'pause');
+el('collect').onclick = () => run(last?.batch === 'collecting' ||
+  (last?.batch === 'complete' && last.errors) ? 'batch' : 'collect');
 el('chapter').onclick = () => {
   if (!origin) return;
   if (el<HTMLInputElement>('auto').checked) requestReader(origin);
@@ -82,7 +92,7 @@ el('cdn').onclick = () => {
   const origins = (last?.hosts ?? []).map(host => host+'/*');
   if (!origins.length) return;
   void chrome.permissions.request({origins}).then(granted => {
-    if (granted) run('chapter');
+    if (granted && last?.batch !== 'collecting') run(last?.batch && last.batch !== 'idle' ? 'batch' : 'chapter');
   }).catch(error => message('message',errorText(error)));
 };
 for (const key of ['language','quality'] as const) {
@@ -94,7 +104,7 @@ void stored().then(({settings}) => {
 });
 void inject().catch(error => {
   message('message',errorText(error));
-  for (const key of ['chapter','current','pause','retry','edit','show','auto'])
+  for (const key of ['collect','chapter','current','pause','retry','edit','show','auto'])
     el<HTMLButtonElement>(key).disabled = true;
 });
 void health();

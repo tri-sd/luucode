@@ -2,6 +2,7 @@
 
 Chrome Manifest V3 và một chương trình chạy trên máy để dịch ảnh truyện tiếng Anh hoặc Nhật sang tiếng Việt. Kết quả là PNG cùng kích thước pixel với ảnh đầu vào. Chữ Việt được vẽ lên ảnh nên di chuyển cùng các nét vẽ khi cuộn, thay đổi kích thước hoặc zoom.
 
+- [Cập nhật 1.4 và hàng đợi chương](docs/UPDATE-1.4.md)
 - [Cập nhật 1.3 và quét ô bị bỏ sót](docs/UPDATE-1.3.md)
 - [Cập nhật 1.2 và kết quả đo](docs/UPDATE-1.2.md)
 - [Cập nhật từ 1.0 lên 1.1](docs/UPDATE-1.1.md)
@@ -15,8 +16,8 @@ Chrome Manifest V3 và một chương trình chạy trên máy để dịch ản
 ## Đọc truyện
 
 1. Chạy `Setup.cmd` lần đầu. Chrome cần nạp thủ công thư mục `extension/dist`. Dán mã ghép nối ở Cài đặt.
-2. Mở chương truyện, ghim extension và bấm **Dịch chương này**. Chọn **Tiếng Nhật** hoặc **Tiếng Anh** nếu tự nhận diện không phù hợp.
-3. Ở chế độ **Tự dịch khi cuộn**, ảnh trong và gần vùng đọc được ưu tiên. Tắt lựa chọn này để xử lý các ảnh đã tải trong chương hiện tại. Cấp quyền đọc trang nếu muốn tự tiếp tục sau khi tải lại trong cùng phiên Chrome.
+2. Mở chương truyện, ghim extension và bấm **Thu thập ảnh chương**. Chọn **Tiếng Nhật** hoặc **Tiếng Anh** nếu tự nhận diện không phù hợp.
+3. Cuộn qua chương rồi bấm **Dịch N ảnh đã thu thập** để xử lý lần lượt. Có thể chọn **Dịch ngay khi đọc** để dùng luồng dịch cũ.
 4. Bật/tắt **Hiện bản dịch** để so sánh. Bấm **Sửa thoại** khi ảnh nằm giữa vùng đọc. Chọn vùng trên ảnh, sửa chữ, kéo khung hoặc điền tọa độ phần trăm rồi lưu. Chọn **Khôi phục vùng** để bỏ chỉnh sửa của vùng đang chọn.
 5. Nếu một CDN bị chặn, **Cho phép CDN ảnh** xin quyền riêng cho các máy chủ ảnh phát hiện được. Ảnh yêu cầu cookie đặc biệt, nền CSS, iframe, canvas bị nhiễm nguồn chéo và trình đọc có biện pháp bảo vệ có thể cần một cách tải hợp lệ khác.
 

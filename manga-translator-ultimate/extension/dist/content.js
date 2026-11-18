@@ -124,9 +124,30 @@
   });
 
   // src/detector.ts
-  function scan(root) {
+  function scan(root, knownWidths = []) {
     const adapter = adapters.find((a) => a.matches(new URL(location.href))) ?? generic;
-    return Array.from(adapter.candidates(root)).filter((i) => adapter.accepts(i));
+    const candidates = Array.from(adapter.candidates(root));
+    const standard = new Set(candidates.filter((image) => adapter.accepts(image)));
+    const peers = /* @__PURE__ */ new Map();
+    function containers(image) {
+      const parents = [];
+      let parent = image.parentElement;
+      while (parent && parent !== document.body && parents.length < 3) {
+        parents.push(parent);
+        parent = parent.parentElement;
+      }
+      return parents;
+    }
+    for (const image of standard) {
+      const [width] = dimensions(image);
+      if (!width) continue;
+      for (const parent of containers(image)) {
+        const widths = peers.get(parent) ?? [];
+        if (!widths.includes(width)) widths.push(width);
+        peers.set(parent, widths);
+      }
+    }
+    return candidates.filter((image) => standard.has(image) || ready(image) && adapter.accepts(image, true) && (knownWidths.some((width) => Math.abs(dimensions(image)[0] / width - 1) < 0.18) || containers(image).some((parent) => peers.get(parent)?.some((width) => Math.abs(dimensions(image)[0] / width - 1) < 0.18))));
   }
   function ready(element) {
     return element instanceof HTMLImageElement ? element.complete && element.naturalWidth > 0 : element.width > 0 && element.height > 0;
@@ -165,12 +186,12 @@
     } catch {
       signal.throwIfAborted();
       try {
-        return await asCanvas(element);
+        if (element) return await asCanvas(element);
       } catch {
         signal.throwIfAborted();
-        if (["http:", "https:"].includes(parsed.protocol)) return fetchImage(parsed.href);
-        throw new Error("Chrome kh\xF4ng cho ph\xE9p \u0111\u1ECDc \u1EA3nh n\xE0y.");
       }
+      if (["http:", "https:"].includes(parsed.protocol)) return fetchImage(parsed.href);
+      throw new Error("Chrome kh\xF4ng cho ph\xE9p \u0111\u1ECDc \u1EA3nh n\xE0y.");
     }
   }
   var generic, adapters;
@@ -182,16 +203,105 @@
       generic = {
         matches: () => true,
         candidates: (root) => root.querySelectorAll("img,canvas"),
-        accepts: (element) => {
+        accepts: (element, shortStrip = false) => {
           if (element.hasAttribute("data-mtu-overlay") || element.closest('header,nav,footer,aside,[role="banner"],[role="advertisement"],[aria-hidden="true"]')) return false;
           if (/(^|[\s_-])(banner|advert|avatar|logo|thumbnail|sponsor|ads?)([\s_-]|$)/i.test(element.className.toString())) return false;
           const r = element.getBoundingClientRect();
           const [nw, nh] = dimensions(element);
-          if (nw && nh && (nw < 240 || nh < 200 || nw / nh > 3.8)) return false;
-          return r.width >= Math.min(250, innerWidth * 0.42) && (r.height >= 175 || !ready(element) && element instanceof HTMLImageElement && Boolean(element.dataset.src || element.src));
+          if (nw && nh && (nw < 240 || nh < (shortStrip ? 36 : 200) || nw / nh > (shortStrip ? 26 : 3.8))) return false;
+          return r.width >= Math.min(250, innerWidth * 0.42) && (r.height >= (shortStrip ? 18 : 175) || !ready(element) && element instanceof HTMLImageElement && Boolean(element.dataset.src || element.src));
         }
       };
       adapters = [generic];
+    }
+  });
+
+  // src/collection.ts
+  var snapshotBudget, ChapterCollection;
+  var init_collection = __esm({
+    "src/collection.ts"() {
+      "use strict";
+      init_detector();
+      init_types();
+      snapshotBudget = 96 * 1024 * 1024;
+      ChapterCollection = class {
+        widths = [];
+        pages = /* @__PURE__ */ new Map();
+        canvasIds = /* @__PURE__ */ new WeakMap();
+        nextCanvas = 0;
+        controller = new AbortController();
+        bytes = 0;
+        capturing = 0;
+        key(element, source) {
+          if (!(element instanceof HTMLCanvasElement)) return source;
+          let id = this.canvasIds.get(element);
+          if (!id) {
+            id = "canvas-page:" + this.nextCanvas++;
+            this.canvasIds.set(element, id);
+          }
+          return id;
+        }
+        lookup(element, source) {
+          return this.pages.get(this.key(element, source));
+        }
+        remember(element, source, changed) {
+          if (!source) return;
+          const [width] = dimensions(element);
+          if (width && !this.widths.includes(width)) this.widths.push(width);
+          const id = this.key(element, source);
+          const found = this.pages.get(id);
+          if (found) {
+            found.element = new WeakRef(element);
+            return;
+          }
+          const ephemeral = element instanceof HTMLCanvasElement || source.startsWith("blob:");
+          const page = {
+            source,
+            element: new WeakRef(element),
+            state: ephemeral ? "capturing" : "waiting"
+          };
+          this.pages.set(id, page);
+          if (ephemeral) this.pump(changed);
+        }
+        pump(changed) {
+          while (this.capturing < 2) {
+            const page = [...this.pages.values()].find((item) => item.state === "capturing" && !item.snapshotPending);
+            if (!page) return;
+            const element = page.element.deref();
+            const original = element && imageSource(element) === page.source ? element : null;
+            this.capturing += 1;
+            page.snapshotPending = true;
+            const signal = this.controller.signal;
+            void capture(original, page.source, signal).then((snapshot) => {
+              if (signal.aborted) return;
+              if (this.bytes + snapshot.length > snapshotBudget) {
+                throw new Error("\u0110\xE3 ch\u1EA1m gi\u1EDBi h\u1EA1n b\u1ED9 nh\u1EDB cho \u1EA3nh t\u1EA1m. H\xE3y chia ch\u01B0\u01A1ng th\xE0nh c\xE1c l\u01B0\u1EE3t nh\u1ECF.");
+              }
+              this.bytes += snapshot.length;
+              page.snapshot = snapshot;
+              page.state = "waiting";
+            }).catch((error) => {
+              if (signal.aborted) return;
+              page.state = "error";
+              page.note = errorText(error);
+            }).finally(() => {
+              if (signal.aborted) return;
+              page.snapshotPending = false;
+              this.capturing -= 1;
+              this.pump(changed);
+              changed();
+            });
+          }
+        }
+        clear() {
+          this.controller.abort();
+          this.controller = new AbortController();
+          this.bytes = 0;
+          this.capturing = 0;
+          this.pages.clear();
+          this.widths.length = 0;
+        }
+      };
     }
   });
 
@@ -426,6 +536,7 @@
   // src/content.ts
   var require_content = __commonJS({
     "src/content.ts"() {
+      init_collection();
       init_anchor();
       init_detector();
       init_protocol();
@@ -441,6 +552,10 @@
         let reconnectAt = 0;
         let engine = "";
         const records = /* @__PURE__ */ new Map();
+        const collection = new ChapterCollection();
+        let batch = "idle";
+        let batchWork;
+        let batchPage;
         function near(element) {
           const rect = element.getBoundingClientRect();
           return rect.bottom > -1300 && rect.top < innerHeight + 1300 && rect.right > -250 && rect.left < innerWidth + 250;
@@ -490,10 +605,23 @@
           restore(rec);
           records.delete(rec.element);
         }
-        function reset() {
+        function reset(clearCollection = true) {
           generation += 1;
           currentWork?.abort.abort();
           displayWork?.abort.abort();
+          batchWork?.abort();
+          if (clearCollection) {
+            batch = "idle";
+            collection.clear();
+          } else {
+            if (batch === "complete") batch = "collecting";
+            for (const page of collection.pages.values()) {
+              if (!page.result) continue;
+              page.state = "waiting";
+              page.result = void 0;
+              page.note = void 0;
+            }
+          }
           single = void 0;
           phase = "";
           for (const rec of records.values()) forget(rec);
@@ -515,7 +643,8 @@
               restore(rec);
             }
           }
-          for (const element of scan(document)) {
+          const candidates = scan(document, collection.widths);
+          for (const element of candidates) {
             if (records.has(element)) continue;
             records.set(element, {
               element,
@@ -530,6 +659,11 @@
           }
           for (const rec of records.values()) {
             if (rec.state === "new" && ready(rec.element)) rec.state = "ready";
+          }
+          if (batch === "collecting") remember(candidates);
+          for (const rec of records.values()) {
+            const result = collection.lookup(rec.element, rec.source)?.result;
+            if (result && result !== rec.result && !rec.changing && rec !== currentWork?.record) recordPage(rec, result);
           }
           let offscreenBytes = 0;
           const offscreen = [...records.values()].filter((r) => !r.near && r.anchor?.kind === "image" && r.result).sort((a, b) => distance(a) - distance(b));
@@ -547,13 +681,97 @@
         function pick() {
           return [...records.values()].filter((r) => ready(r.element)).sort((a, b) => distance(a) - distance(b))[0];
         }
+        function remember(candidates = scan(document, collection.widths)) {
+          for (const element of candidates) {
+            const rec = records.get(element);
+            if (!rec || rec.changing || !ready(element)) continue;
+            collection.remember(element, rec.source, schedule);
+            const entry = collection.lookup(element, rec.source);
+            if (entry?.state === "waiting" && rec.state === "done" && rec.result) {
+              entry.result = rec.result;
+              entry.state = "done";
+            }
+          }
+        }
+        function getPageResult(result) {
+          const { image, regions, ...metadata } = result;
+          const issues = regions.filter((region) => region.issue);
+          return {
+            ...metadata,
+            issues: issues.length,
+            context: regions.filter((r) => r.text && !r.issue).slice(-8).map((r) => r.source + " \u2192 " + r.text).join("\n"),
+            note: result.rendered ? void 0 : issues[0]?.issue ?? "Kh\xF4ng ph\xE1t hi\u1EC7n v\xF9ng ch\u1EEF c\xF3 th\u1EC3 ch\xE8n."
+          };
+        }
+        function recordPage(rec, result) {
+          rec.result = result;
+          rec.issues = result.issues;
+          rec.context = result.context;
+          rec.canShow = result.rendered > 0;
+          rec.state = rec.canShow ? "done" : "error";
+          rec.note = result.note;
+        }
+        function dispatchBatch() {
+          const page = [...collection.pages.values()].find((item) => item.state === "waiting" || item.state === "capturing");
+          if (!page) {
+            batch = "complete";
+            return;
+          }
+          if (page.state === "capturing") return;
+          const abort = new AbortController();
+          const epoch = generation;
+          const alive = () => epoch === generation && !abort.signal.aborted && chapter === location.href;
+          batchWork = abort;
+          batchPage = page;
+          void (async () => {
+            try {
+              phase = "\u0110\u1ECDc \u1EA3nh \u0111\xE3 thu th\u1EADp";
+              const element = page.element.deref();
+              const liveRecord = element && records.get(element);
+              const usable = element?.isConnected && liveRecord?.source === page.source && !liveRecord?.anchor && imageSource(element) === page.source ? element : null;
+              const image = page.snapshot ?? await capture(usable, page.source, abort.signal);
+              if (!alive()) return;
+              const entries = [...collection.pages.values()];
+              const previous = entries.slice(0, entries.indexOf(page));
+              const context = previous.filter((item) => item.result?.context).slice(-3).map((item) => item.result.context).join("\n").slice(-2e3);
+              const result = await job("submit", { image, settings, context, force: Boolean(page.result) }, abort.signal, (value) => {
+                phase = value;
+              });
+              if (!alive()) return;
+              page.result = getPageResult(result);
+              page.state = result.rendered ? "done" : "error";
+              page.note = page.result.note;
+              engine = "\u0110\xE3 k\u1EBFt n\u1ED1i";
+            } catch (error) {
+              if (!alive()) return;
+              if (error instanceof RequestError && (error.status === 0 || error.status === 429 || error.status === 503)) {
+                reconnectAt = Date.now() + 5e3;
+                engine = errorText(error);
+              } else {
+                page.state = "error";
+                page.note = errorText(error);
+              }
+            } finally {
+              if (batchWork === abort) {
+                batchWork = void 0;
+                batchPage = void 0;
+                phase = "";
+              }
+              schedule();
+            }
+          })();
+        }
         function dispatch() {
-          if (document.hidden) return;
-          if (!displayWork && showing && Date.now() >= reconnectAt) {
+          if (!document.hidden && !displayWork && showing && Date.now() >= reconnectAt) {
             const restoreNext = [...records.values()].find((r) => r !== currentWork?.record && r.near && r.canShow && !r.changing && !r.anchor && r.result && !r.note && single?.record !== r);
             if (restoreNext) launch(restoreNext, "display", false);
           }
-          if (currentWork || paused || Date.now() < reconnectAt) return;
+          if (currentWork || batchWork || paused || Date.now() < reconnectAt) return;
+          if (batch === "running" && !single) {
+            dispatchBatch();
+            return;
+          }
+          if (document.hidden) return;
           if (single) {
             const { record, force } = single;
             single = void 0;
@@ -617,14 +835,16 @@
               });
             }
             assertCurrent(work, source);
-            const { image, regions, ...metadata } = result;
-            rec.result = metadata;
+            const { image } = result;
+            const pageResult = getPageResult(result);
             rec.source = source;
-            rec.issues = regions.filter((r) => r.issue).length;
-            rec.context = regions.filter((r) => r.text && !r.issue).slice(-8).map((r) => r.source + " \u2192 " + r.text).join("\n");
-            rec.canShow = Boolean(image);
-            rec.state = result.rendered ? "done" : "error";
-            rec.note = result.rendered ? void 0 : regions.length ? regions.find((r) => r.issue)?.issue ?? "Ch\u01B0a k\u1EBFt xu\u1EA5t \u0111\u01B0\u1EE3c ch\u1EEF." : "Kh\xF4ng ph\xE1t hi\u1EC7n v\xF9ng ch\u1EEF.";
+            recordPage(rec, pageResult);
+            const collected = collection.lookup(rec.element, source);
+            if (collected) {
+              collected.result = pageResult;
+              collected.state = result.rendered ? "done" : "error";
+              collected.note = pageResult.note;
+            }
             engine = "\u0110\xE3 k\u1EBFt n\u1ED1i";
             if (!image || !rec.near || !showing) return;
             const [w, h] = dimensions(rec.element);
@@ -652,6 +872,12 @@
               }
               engine = errorText(error);
             } else if (work.type === "display" && error instanceof RequestError && error.status === 404) {
+              const collected = collection.lookup(rec.element, rec.source);
+              if (collected) {
+                collected.result = void 0;
+                collected.state = "error";
+                collected.note = "\u1EA2nh d\u1ECBch \u0111\xE3 h\u1EBFt h\u1EA1n trong cache. H\xE3y d\u1ECBch l\u1EA1i \u1EA3nh.";
+              }
               rec.result = void 0;
               rec.canShow = false;
               rec.state = "ready";
@@ -664,34 +890,70 @@
         function status() {
           const states = [...records.values()];
           const hosts = /* @__PURE__ */ new Set();
-          for (const rec of states) {
+          const queue = [...collection.pages.values()];
+          const progress = batch === "idle" ? states : queue;
+          for (const entry of [...states, ...queue]) {
             try {
-              const url = new URL(rec.source);
+              const url = new URL(entry.source);
               if (/^https?:$/.test(url.protocol) && url.origin !== location.origin) hosts.add(url.origin);
             } catch {
             }
           }
           return {
-            found: states.length,
-            done: states.filter((r) => r.state === "done").length,
-            waiting: states.filter((r) => r !== currentWork?.record && (r.state === "new" || r.state === "ready")).length,
-            processing: currentWork?.type === "process" && !currentWork.abort.signal.aborted ? 1 : 0,
-            errors: states.filter((r) => r.state === "error").length,
-            regions: states.reduce((n, r) => n + r.issues, 0),
+            batch,
+            collected: queue.length,
+            found: progress.length,
+            done: progress.filter((r) => r.state === "done").length,
+            waiting: progress.filter((r) => r !== currentWork?.record && r !== batchPage && (r.state === "new" || r.state === "ready" || r.state === "waiting" || r.state === "capturing")).length,
+            processing: currentWork && !currentWork.abort.signal.aborted || batchWork && !batchWork.signal.aborted ? 1 : 0,
+            errors: progress.filter((r) => r.state === "error").length,
+            regions: batch === "idle" ? states.reduce((n, r) => n + r.issues, 0) : queue.reduce((n, r) => n + (r.result?.issues ?? 0), 0),
             phase,
             engine,
             active,
             paused,
             auto,
             showing,
-            recent: states.filter((r) => r.note).slice(-5).map((r) => r.note),
+            recent: progress.filter((r) => r.note).slice(-5).map((r) => r.note),
             hosts: [...hosts].slice(0, 12)
           };
         }
         async function handle(action, value) {
           refresh();
           switch (action) {
+            case "collect":
+              if (batch === "running") break;
+              active = false;
+              paused = false;
+              currentWork?.abort.abort();
+              single = void 0;
+              batch = "collecting";
+              remember();
+              await chrome.runtime.sendMessage({ type: "reader-state", active: false });
+              break;
+            case "batch":
+              if (batch === "collecting" && collection.pages.size === 0)
+                throw new Error("Ch\u01B0a c\xF3 \u1EA3nh \u0111\xE3 t\u1EA3i. Cu\u1ED9n qua ch\u01B0\u01A1ng \u0111\u1EC3 thu th\u1EADp \u1EA3nh.");
+              if (batch === "idle") break;
+              if (batch !== "collecting") {
+                for (const entry of collection.pages.values()) {
+                  if (entry.state === "error" && (entry.snapshot || !/^(blob:|canvas:)/.test(entry.source))) {
+                    entry.state = "waiting";
+                    entry.note = void 0;
+                  }
+                }
+              }
+              active = false;
+              paused = false;
+              reconnectAt = 0;
+              batch = "running";
+              break;
             case "chapter":
+              if (batch !== "idle" && batch !== "complete") break;
+              if (batch === "complete") {
+                batch = "idle";
+                collection.clear();
+              }
               active = true;
               paused = false;
               reconnectAt = 0;
@@ -706,12 +968,14 @@
             case "resume":
               paused = false;
               reconnectAt = 0;
+              if (batch !== "idle") break;
               if (!active && !single) active = true;
               if (active) await chrome.runtime.sendMessage({ type: "reader-state", active: auto });
               break;
             case "pause":
               paused = true;
-              if (currentWork?.type === "process" && !active) single = { record: currentWork.record, force: false };
+              batchWork?.abort();
+              if (currentWork?.type === "process" && !active && batch === "idle") single = { record: currentWork.record, force: false };
               currentWork?.abort.abort();
               await chrome.runtime.sendMessage({ type: "reader-state", active: false });
               break;
@@ -787,7 +1051,7 @@
           const { auto: prevAuto, ...before } = message.oldValue ?? {};
           if (newAuto !== prevAuto) auto = newAuto ?? true;
           settings = { ...defaults, ...profile };
-          if (JSON.stringify(profile) !== JSON.stringify(before)) reset();
+          if (JSON.stringify(profile) !== JSON.stringify(before)) reset(false);
           schedule();
         });
         document.addEventListener("load", () => schedule(), true);
@@ -802,6 +1066,7 @@
         window.addEventListener("pagehide", () => {
           currentWork?.abort.abort();
           displayWork?.abort.abort();
+          batchWork?.abort();
         });
         window.setInterval(() => {
           if (chapter !== location.href || reconnectAt && Date.now() >= reconnectAt) {

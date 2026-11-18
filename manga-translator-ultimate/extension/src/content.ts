@@ -1,3 +1,4 @@
+import { ChapterCollection, type CollectedPage, type PageResult } from './collection';
 import { apply, type Anchor } from './anchor';
 import { capture, dimensions, imageSource, ready, scan, type MangaImage } from './detector';
 import { api, job, RequestError } from './protocol';
@@ -5,7 +6,7 @@ import { defaults, errorText, type Command, type Reply, type Settings, type Stat
 
 type RecordState = {
   element: MangaImage; source: string; near: boolean; state: 'new' | 'ready' | 'done' | 'error';
-  result?: Omit<Summary, 'image' | 'regions'>; anchor?: Anchor; note?: string;
+  result?: PageResult; anchor?: Anchor; note?: string;
   canShow: boolean; context?: string; issues: number; changing?: boolean;
 };
 type Work = { record: RecordState; abort: AbortController; generation: number; type: 'process' | 'display' };
@@ -21,6 +22,10 @@ function boot() {
   let reconnectAt = 0;
   let engine = '';
   const records = new Map<MangaImage, RecordState>();
+  const collection = new ChapterCollection();
+  let batch: Status['batch'] = 'idle';
+  let batchWork: AbortController | undefined;
+  let batchPage: CollectedPage | undefined;
 
   function near(element: MangaImage) {
     const rect = element.getBoundingClientRect();
@@ -67,10 +72,23 @@ function boot() {
     records.delete(rec.element);
   }
 
-  function reset() {
+  function reset(clearCollection = true) {
     generation += 1;
     currentWork?.abort.abort();
     displayWork?.abort.abort();
+    batchWork?.abort();
+    if (clearCollection) {
+      batch = 'idle';
+      collection.clear();
+    } else {
+      if (batch === 'complete') batch = 'collecting';
+      for (const page of collection.pages.values()) {
+        if (!page.result) continue;
+        page.state = 'waiting';
+        page.result = undefined;
+        page.note = undefined;
+      }
+    }
     single = undefined;
     phase = '';
     for (const rec of records.values()) forget(rec);
@@ -94,7 +112,8 @@ function boot() {
         restore(rec);
       }
     }
-    for (const element of scan(document)) {
+    const candidates = scan(document, collection.widths);
+    for (const element of candidates) {
       if (records.has(element)) continue;
       records.set(element, {element, source: imageSource(element), near: near(element), state:'new',
         canShow:false, issues:0});
@@ -103,6 +122,11 @@ function boot() {
     }
     for (const rec of records.values()) {
       if (rec.state === 'new' && ready(rec.element)) rec.state = 'ready';
+    }
+    if (batch === 'collecting') remember(candidates);
+    for (const rec of records.values()) {
+      const result = collection.lookup(rec.element, rec.source)?.result;
+      if (result && result !== rec.result && !rec.changing && rec !== currentWork?.record) recordPage(rec, result);
     }
     // Keep nearby replacements attached within an offscreen decoded-size budget.
     let offscreenBytes = 0;
@@ -126,13 +150,90 @@ function boot() {
     return [...records.values()].filter(r => ready(r.element)).sort((a,b) => distance(a)-distance(b))[0];
   }
 
+  function remember(candidates = scan(document, collection.widths)) {
+    for (const element of candidates) {
+      const rec = records.get(element);
+      if (!rec || rec.changing || !ready(element)) continue;
+      collection.remember(element, rec.source, schedule);
+      const entry = collection.lookup(element, rec.source);
+      if (entry?.state === 'waiting' && rec.state === 'done' && rec.result) {
+        entry.result = rec.result;
+        entry.state = 'done';
+      }
+    }
+  }
+
+  function getPageResult(result: Summary): PageResult {
+    const {image, regions, ...metadata} = result;
+    const issues = regions.filter(region => region.issue);
+    return {
+      ...metadata, issues: issues.length,
+      context: regions.filter(r => r.text && !r.issue).slice(-8).map(r => r.source+' → '+r.text).join('\n'),
+      note: result.rendered ? undefined : issues[0]?.issue ?? 'Không phát hiện vùng chữ có thể chèn.',
+    };
+  }
+
+  function recordPage(rec: RecordState, result: PageResult) {
+    rec.result = result;
+    rec.issues = result.issues;
+    rec.context = result.context;
+    rec.canShow = result.rendered > 0;
+    rec.state = rec.canShow ? 'done' : 'error';
+    rec.note = result.note;
+  }
+
+  function dispatchBatch() {
+    const page = [...collection.pages.values()].find(item => item.state === 'waiting' || item.state === 'capturing');
+    if (!page) { batch = 'complete'; return; }
+    if (page.state === 'capturing') return;
+    const abort = new AbortController();
+    const epoch = generation;
+    const alive = () => epoch === generation && !abort.signal.aborted && chapter === location.href;
+    batchWork = abort;
+    batchPage = page;
+    void (async () => {
+      try {
+        phase = 'Đọc ảnh đã thu thập';
+        const element = page.element.deref();
+        const liveRecord = element && records.get(element);
+        const usable = element?.isConnected && liveRecord?.source === page.source && !liveRecord?.anchor &&
+          imageSource(element) === page.source ? element : null;
+        const image = page.snapshot ?? await capture(usable, page.source, abort.signal);
+        if (!alive()) return;
+        const entries = [...collection.pages.values()];
+        const previous = entries.slice(0,entries.indexOf(page));
+        const context = previous.filter(item => item.result?.context).slice(-3)
+          .map(item => item.result!.context).join('\n').slice(-2000);
+        const result = await job('submit', {image, settings, context, force: Boolean(page.result)}, abort.signal, value => { phase = value; });
+        if (!alive()) return;
+        page.result = getPageResult(result);
+        page.state = result.rendered ? 'done' : 'error';
+        page.note = page.result.note;
+        engine = 'Đã kết nối';
+      } catch (error) {
+        if (!alive()) return;
+        if (error instanceof RequestError && (error.status === 0 || error.status === 429 || error.status === 503)) {
+          reconnectAt = Date.now()+5000;
+          engine = errorText(error);
+        } else {
+          page.state = 'error';
+          page.note = errorText(error);
+        }
+      } finally {
+        if (batchWork === abort) { batchWork = undefined; batchPage = undefined; phase = ''; }
+        schedule();
+      }
+    })();
+  }
+
   function dispatch() {
-    if (document.hidden) return;
-    if (!displayWork && showing && Date.now() >= reconnectAt) {
+    if (!document.hidden && !displayWork && showing && Date.now() >= reconnectAt) {
       const restoreNext = [...records.values()].find(r => r !== currentWork?.record && r.near && r.canShow && !r.changing && !r.anchor && r.result && !r.note && single?.record !== r);
       if (restoreNext) launch(restoreNext, 'display', false);
     }
-    if (currentWork || paused || Date.now() < reconnectAt) return;
+    if (currentWork || batchWork || paused || Date.now() < reconnectAt) return;
+    if (batch === 'running' && !single) { dispatchBatch(); return; }
+    if (document.hidden) return;
     if (single) {
       const {record, force} = single;
       single = undefined;
@@ -197,15 +298,16 @@ function boot() {
         result = await job('submit', {image, settings, context:contextBefore(rec), force}, signal, value => { phase = value; });
       }
       assertCurrent(work, source);
-      const {image, regions, ...metadata} = result;
-      rec.result = metadata;
+      const {image} = result;
+      const pageResult = getPageResult(result);
       rec.source = source;
-      rec.issues = regions.filter(r => r.issue).length;
-      rec.context = regions.filter(r => r.text && !r.issue).slice(-8).map(r => r.source+' → '+r.text).join('\n');
-      rec.canShow = Boolean(image);
-      rec.state = result.rendered ? 'done' : 'error';
-      rec.note = result.rendered ? undefined : regions.length ? (regions.find(r => r.issue)?.issue ?? 'Chưa kết xuất được chữ.') :
-        'Không phát hiện vùng chữ.';
+      recordPage(rec, pageResult);
+      const collected = collection.lookup(rec.element, source);
+      if (collected) {
+        collected.result = pageResult;
+        collected.state = result.rendered ? 'done' : 'error';
+        collected.note = pageResult.note;
+      }
       engine = 'Đã kết nối';
       if (!image || !rec.near || !showing) return;
       const [w,h] = dimensions(rec.element);
@@ -227,6 +329,12 @@ function boot() {
         }
         engine = errorText(error);
       } else if (work.type === 'display' && error instanceof RequestError && error.status === 404) {
+        const collected = collection.lookup(rec.element, rec.source);
+        if (collected) {
+          collected.result = undefined;
+          collected.state = 'error';
+          collected.note = 'Ảnh dịch đã hết hạn trong cache. Hãy dịch lại ảnh.';
+        }
         rec.result = undefined;
         rec.canShow = false;
         rec.state = 'ready';
@@ -240,26 +348,57 @@ function boot() {
   function status(): Status {
     const states = [...records.values()];
     const hosts = new Set<string>();
-    for (const rec of states) {
+    const queue = [...collection.pages.values()];
+    const progress = batch === 'idle' ? states : queue;
+    for (const entry of [...states, ...queue]) {
       try {
-        const url = new URL(rec.source);
+        const url = new URL(entry.source);
         if (/^https?:$/.test(url.protocol) && url.origin !== location.origin) hosts.add(url.origin);
       } catch { /* No request is sent for an unset source. */ }
     }
     return {
-      found:states.length, done:states.filter(r => r.state === 'done').length,
-      waiting:states.filter(r => r !== currentWork?.record && (r.state === 'new' || r.state === 'ready')).length,
-      processing:currentWork?.type === 'process' && !currentWork.abort.signal.aborted ? 1 : 0,
-      errors:states.filter(r => r.state === 'error').length,
-      regions:states.reduce((n,r) => n+r.issues,0), phase, engine, active, paused, auto, showing,
-      recent:states.filter(r => r.note).slice(-5).map(r => r.note!), hosts:[...hosts].slice(0,12),
+      batch, collected:queue.length,
+      found:progress.length, done:progress.filter(r => r.state === 'done').length,
+      waiting:progress.filter(r => r !== currentWork?.record && r !== batchPage &&
+        (r.state === 'new' || r.state === 'ready' || r.state === 'waiting' || r.state === 'capturing')).length,
+      processing:(currentWork && !currentWork.abort.signal.aborted) || (batchWork && !batchWork.signal.aborted) ? 1 : 0,
+      errors:progress.filter(r => r.state === 'error').length,
+      regions:batch === 'idle' ? states.reduce((n,r) => n+r.issues,0) : queue.reduce((n,r) => n+(r.result?.issues ?? 0),0),
+      phase, engine, active, paused, auto, showing,
+      recent:progress.filter(r => r.note).slice(-5).map(r => r.note!), hosts:[...hosts].slice(0,12),
     };
   }
 
   async function handle(action: Command, value: unknown) {
     refresh();
     switch (action) {
+      case 'collect':
+        if (batch === 'running') break;
+        active = false; paused = false;
+        currentWork?.abort.abort();
+        single = undefined;
+        batch = 'collecting';
+        remember();
+        await chrome.runtime.sendMessage({type:'reader-state', active:false});
+        break;
+      case 'batch':
+        if (batch === 'collecting' && collection.pages.size === 0)
+          throw new Error('Chưa có ảnh đã tải. Cuộn qua chương để thu thập ảnh.');
+        if (batch === 'idle') break;
+        if (batch !== 'collecting') {
+          for (const entry of collection.pages.values()) {
+            if (entry.state === 'error' && (entry.snapshot || !/^(blob:|canvas:)/.test(entry.source))) {
+              entry.state = 'waiting';
+              entry.note = undefined;
+            }
+          }
+        }
+        active = false; paused = false; reconnectAt = 0;
+        batch = 'running';
+        break;
       case 'chapter':
+        if (batch !== 'idle' && batch !== 'complete') break;
+        if (batch === 'complete') { batch = 'idle'; collection.clear(); }
         active = true; paused = false; reconnectAt = 0;
         await chrome.runtime.sendMessage({type:'reader-state', active:auto});
         for (const rec of records.values()) {
@@ -268,12 +407,14 @@ function boot() {
         break;
       case 'resume':
         paused = false; reconnectAt = 0;
+        if (batch !== 'idle') break;
         if (!active && !single) active = true;
         if (active) await chrome.runtime.sendMessage({type:'reader-state', active:auto});
         break;
       case 'pause':
         paused = true;
-        if (currentWork?.type === 'process' && !active) single = {record:currentWork.record, force:false};
+        batchWork?.abort();
+        if (currentWork?.type === 'process' && !active && batch === 'idle') single = {record:currentWork.record, force:false};
         currentWork?.abort.abort();
         await chrome.runtime.sendMessage({type:'reader-state', active:false});
         break;
@@ -343,7 +484,7 @@ function boot() {
     const {auto: prevAuto, ...before} = message.oldValue ?? {};
     if (newAuto !== prevAuto) auto = newAuto ?? true;
     settings = {...defaults, ...profile};
-    if (JSON.stringify(profile) !== JSON.stringify(before)) reset();
+    if (JSON.stringify(profile) !== JSON.stringify(before)) reset(false);
     schedule();
   });
   document.addEventListener('load', () => schedule(), true);
@@ -352,7 +493,7 @@ function boot() {
   window.addEventListener('pageshow', () => schedule());
   const navigation = (window as Window & {navigation?: EventTarget}).navigation;
   navigation?.addEventListener('currententrychange', () => { pageChanged(); schedule(); });
-  window.addEventListener('pagehide', () => { currentWork?.abort.abort(); displayWork?.abort.abort(); });
+  window.addEventListener('pagehide', () => { currentWork?.abort.abort(); displayWork?.abort.abort(); batchWork?.abort(); });
   window.setInterval(() => {
     if (chapter !== location.href || (reconnectAt && Date.now() >= reconnectAt)) {
       reconnectAt = 0;

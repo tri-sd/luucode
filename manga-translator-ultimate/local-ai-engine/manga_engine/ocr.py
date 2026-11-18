@@ -146,6 +146,20 @@ def ordered(groups, manga):
     return [item for row in rows for item in sorted(row, key=lambda item: item[0][0], reverse=manga)]
 
 
+def join_english_lines(lines):
+    full = ""
+    for line in lines:
+        if not line:
+            continue
+        if re.search(r"[A-Za-z]{2,}-$",full) and re.match(r"[A-Za-z]{2}",line):
+            first = re.match(r"[A-Za-z]+",line).group().lower()
+            # Honorifics retain their real hyphen across a printed line break.
+            full = (full if first in {"sama","san","chan","kun","dono","senpai"} else full[:-1]) + line
+        else:
+            full = f"{full} {line}".strip()
+    return full
+
+
 class Ocr:
     def __init__(self):
         self.detectors = {}
@@ -254,7 +268,11 @@ class Ocr:
                 continue
             words = [(data["text"][i].strip(),float(data["conf"][i])) for i in usable]
             score = sum(c*len(w) for w,c in words) / (100*sum(len(w) for w,_ in words))
-            phrase = " ".join(w for w,_ in words)
+            lines = {}
+            for i in usable:
+                key = tuple(data[field][i] for field in ("block_num","par_num","line_num"))
+                lines.setdefault(key, []).append(data["text"][i].strip())
+            phrase = join_english_lines(" ".join(line) for line in lines.values())
             if score > best[1] and re.search(r"[a-zA-Z]",phrase):
                 best = phrase, score
             if score >= .84:
@@ -277,7 +295,7 @@ class Ocr:
                     break
                 recovered.append((" ".join(word for word,_ in words), score))
             if len(recovered) == len(bands):
-                return " ".join(word for word,_ in recovered), float(np.mean([score for _,score in recovered]))
+                return join_english_lines(word for word,_ in recovered), float(np.mean([score for _,score in recovered]))
         return best
 
     def regions(self, rgb, settings, check):
@@ -286,13 +304,15 @@ class Ocr:
         polys = self.detect(rgb, settings.quality, check)
         grouped = []
         claimed = set()
-        for bubble, outline, members in group_light_balloons(gray, [bounds(p) for p in polys]):
+        boxes = [bounds(p) for p in polys]
+
+        def add_balloon(bubble, outline, members):
             x, y, r, b = bubble
             patch = rgb[y:b,x:r]
             inside = raster(outline-[x,y], patch.shape[:2], 3)
             evidence = light_ink(patch, inside)
             if evidence is None:
-                continue
+                return
             background, ink = evidence
             yy, xx = np.where(ink)
             a, t, c, d = max(0,xx.min()-5), max(0,yy.min()-5), min(r-x,xx.max()+6), min(b-y,yy.max()+6)
@@ -302,6 +322,15 @@ class Ocr:
                         if lines else settings.language == "ja" and (d-t) > 1.4*(c-a))
             grouped.append(((x+a,y+t,x+c,y+d), bubble, (lines, vertical, outline, crop)))
             claimed.update(members)
+
+        for bubble, outline, members in group_light_balloons(gray, boxes):
+            add_balloon(bubble, outline, members)
+        missing = [index for index in range(len(boxes)) if index not in claimed]
+        if missing:
+            for bubble, outline, members in group_light_balloons(
+                    gray, [boxes[i] for i in missing], separate_leaks=True):
+                if not any(coverage(bubble, found) > .65 for _,found,_ in grouped):
+                    add_balloon(bubble, outline, [missing[i] for i in members])
 
         groups = defaultdict(list)
         component_cache = []

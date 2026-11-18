@@ -27,11 +27,12 @@ export type Summary = {
   fingerprint: string; regions: Region[]; edits: string[];
 };
 export type Status = {
+  batch: 'idle' | 'collecting' | 'running' | 'complete'; collected: number;
   found: number; done: number; processing: number; waiting: number; errors: number;
   regions: number; engine: string; phase: string; active: boolean; paused: boolean; auto: boolean;
   showing: boolean; recent: string[]; hosts: string[];
 };
-export type Command = 'status' | 'chapter' | 'current' | 'pause' | 'resume' | 'auto' | 'show' | 'retry' | 'edit' | 'refresh';
+export type Command = 'status' | 'collect' | 'batch' | 'chapter' | 'current' | 'pause' | 'resume' | 'auto' | 'show' | 'retry' | 'edit' | 'refresh';
 export type ApiAction = 'health' | 'submit' | 'job' | 'cancel' | 'result' | 'original' | 'edit' | 'glossary' | 'saveGlossary' | 'clear';
 export type Reply<T> = { ok: true; value: T } | { ok: false; error: string; status?: number };
 export const imageLimit = 22_020_096;

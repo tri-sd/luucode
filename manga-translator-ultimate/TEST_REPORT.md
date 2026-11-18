@@ -2,6 +2,13 @@
 
 
 
+
+## Bản 1.4
+
+**21 bài đạt** trên Linux với Chromium và Qwen3 local thật. Test Chromium thu thập ba ảnh trong đó ảnh đầu bị gỡ khỏi DOM và ảnh thứ hai là dải thấp 170 px. Test quan sát không có yêu cầu dịch trong lúc thu thập, xác nhận ba lần gửi đúng thứ tự sau khi bắt đầu, rồi gắn lại ảnh đầu vào DOM và hiển thị bản dịch đã có mà không gửi thêm lần dịch. Các kiểm thử cuộn, cache và thay nội dung của phiên bản trước vẫn đạt.
+
+Ca OCR mới mô phỏng ô thoại hở cạnh khung với `INVESTI- / GATE` và `RELATION- / SHIP`. OCR đọc đủ câu, kết xuất được chữ Việt và giữ phần hình ngoài ô. Hai ảnh tích hợp Anh và Nhật vẫn kết xuất đủ 3/3 vùng mỗi ảnh. Ca Comix gốc trên Cốc Cốc chưa được chạy lại trong môi trường thử nghiệm.
+
 ## Bản 1.3
 
 **20 bài đạt** trên Linux với Chromium và Qwen3 local thật. Hai mẫu Anh/Nhật đều giữ 3/3 vùng thoại, cùng bản dịch đã lưu trong phép đo 1.2. Ca hồi quy mới mô phỏng một ô sáng lớn bị cắt ở ba mép ảnh. Bộ dò được cố ý chỉ trả ô bên cạnh. Luồng quét bổ sung đọc đủ cả bảy dòng trong ô lớn, xóa các nét gốc trong mẫu, giữ vùng tranh giữa hai ô và kết xuất đúng hai bản dịch. Một bài riêng kiểm tra bộ dịch từ chối việc đưa số 13 từ ô nguồn sang ô bên cạnh. Các bài cuộn, cache và chèn ảnh của Chromium đều đạt.

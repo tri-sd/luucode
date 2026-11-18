@@ -37,12 +37,17 @@ if(location.pathname==='/canvas'){
 @contextmanager
 def fixture_server():
     root = ROOT/'tests'/'fixtures'
+    strip = BytesIO()
+    with Image.open(root/'english.png') as im:
+        im.crop((0,40,720,210)).save(strip,format='PNG')
     class Server(BaseHTTPRequestHandler):
         def do_GET(self):
             path = self.path.split('?',1)[0]
             if path in ['/english.png','/japanese.png']:
                 raw = (root/path[1:]).read_bytes()
                 mimetype = 'image/png'
+            elif path == '/strip.png':
+                raw,mimetype = strip.getvalue(),'image/png'
             elif path == '/fixture.js':
                 raw,mimetype = SCRIPT.encode(),'text/javascript'
             elif path == '/favicon.ico':
@@ -244,5 +249,67 @@ def test_mv3_image_anchor_and_reader(tmp_path):
         options.get_by_text('Đã lưu hồ sơ.').wait_for()
         assert not tab_command(worker,tab_id,'status')['auto']
         options.close()
+        # Run the collect-first workflow with a reader that removes the old
+        # image node and loads a narrow page strip before the next full image.
+        page.goto(url+'/collect-fixture')
+        page.wait_for_function('document.querySelector("#p").naturalWidth === 720')
+        worker.evaluate("""() => {
+          const upstream=self.fetch.bind(self);
+          self.batchSubmissions=[];
+          self.fetch=(input,options)=>{
+            if(String(input)==='http://127.0.0.1:18787/jobs' && options?.method==='POST')
+              self.batchSubmissions.push(JSON.parse(options.body).image.length);
+            return upstream(input,options);
+          };
+        }""")
+        state = tab_command(worker,tab_id,'collect')
+        assert state['batch'] == 'collecting' and state['collected'] == 1
+        page.evaluate("""async () => {
+            const root=document.querySelector('#reader');
+            const original=document.querySelector('#p');
+            const strip=document.createElement('img');
+            strip.id='strip';strip.src='/strip.png';root.append(strip);
+            root.scrollTop=root.scrollHeight;
+            await strip.decode();
+            original.closest('picture').remove();
+        }""")
+        for _ in range(40):
+            page.wait_for_timeout(100)
+            if tab_command(worker,tab_id,'status')['collected'] == 2:
+                break
+        else:
+            pytest.fail('The short page strip was not collected.')
+        page.evaluate("""async () => {
+            const reader=document.querySelector('#reader');
+            const image=document.createElement('img');
+            image.id='last';image.src='/english.png?third=1';reader.append(image);
+            reader.scrollTop=reader.scrollHeight;
+            await image.decode();
+        }""")
+        for _ in range(40):
+            page.wait_for_timeout(100)
+            if tab_command(worker,tab_id,'status')['collected'] == 3:
+                break
+        else:
+            pytest.fail('The third page was not collected.')
+        assert worker.evaluate('self.batchSubmissions') == []
+        tab_command(worker,tab_id,'batch')
+        for _ in range(220):
+            page.wait_for_timeout(550)
+            state = tab_command(worker,tab_id,'status')
+            if state['batch'] == 'complete':
+                break
+        assert state['batch'] == 'complete' and state['done'] == 3, state
+        lengths = worker.evaluate('self.batchSubmissions')
+        assert len(lengths) == 3 and lengths[0] == lengths[2] and lengths[1] < lengths[0], lengths
+        page.evaluate("""() => {
+            window.replaceCollected=document.createElement('img');
+            window.replaceCollected.id='p';
+            window.replaceCollected.src='/english.png';
+            const reader=document.querySelector('#reader');
+            reader.prepend(window.replaceCollected);reader.scrollTop=0;
+        }""")
+        page.wait_for_function(changed('#p'), timeout=15000)
+        assert worker.evaluate('self.batchSubmissions') == lengths
         assert all(req.startswith((url,EXTENSION_ORIGIN,'http://127.0.0.1:18787','blob:','data:')) for req in requests), requests
         context.close()
