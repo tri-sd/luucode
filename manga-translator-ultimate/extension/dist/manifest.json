@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "MANGA TRANSLATOR ULTIMATE — FREE LOCAL EDITION",
   "short_name": "Manga Translator",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqvQ07Np/IiE1vOv2Ykh/6jCQv2pHPLUWWd3gCIXNZrm0Ba/xV/7qhEbBkDdgkicKkWgoxqeeJVarXOtLVQdJe7VDrsyFuSlVHs4GYMCTbTPaiI/9040o36cMCthruqHyV/S0M79zVfH33vGbzPovRZlvsIKrTOIm2WvoqpEcqNUWvUkX0TcyiOB7Ux8Qytua07jH0oFYUS1zvANiYEBFZOhWu0caG/YjjDe8qWM3Nxti/69BaoSPe/206f6G4oi7HmSkJbxzHm+E7d1Py4CnnnB/qldfRPedK5ZkXywTrPUXOHHlxVZV9M4g2JcOTeCyUIvOQd82enieVWcsNUzwTwIDAQAB",
   "description": "Dịch truyện Anh và Nhật sang tiếng Việt bằng AI local.",
   "minimum_chrome_version": "120",

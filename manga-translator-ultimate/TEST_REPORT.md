@@ -1,5 +1,9 @@
 # Kiểm thử hồi quy
 
+## Bản 1.8
+
+**30 bài đạt** với Chromium và Qwen3 local trên Linux. Đã đọc thử năm cảnh Anh và Nhật. Các cảnh có quan hệ rõ cho ra cách xưng hô tớ–cậu, chị–em và thầy–em. Trong mẫu thiếu dấu hiệu quan hệ, mô hình vẫn có thể chọn đại từ lệch vai. Kiểm thử xác nhận các ô đọc trước chỉ cung cấp ngữ cảnh, và lượt rút gọn nhận bản dịch đã có để giữ giọng thoại. Ba trang gốc chương 466 hiện đủ 9/9 ô từng bỏ sót. [Cách cập nhật](docs/UPDATE-1.8.md).
+
 ## Bản 1.7
 
 **29 bài đạt** với Chromium và Qwen3 local trên Linux. Ca mới kiểm tra ngữ cảnh rút gọn, thử lại với câu gốc, áp dụng cách dịch xác định cho cả câu ngắn và ưu tiên từ điển. Kiểm thử chế độ Ít bộ nhớ xác nhận engine giải phóng mô hình một lần sau khi dàn chữ và bỏ qua việc giải phóng khi dùng lại ảnh đã kết xuất.

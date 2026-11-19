@@ -89,6 +89,30 @@ def test_context_prioritizes_recent_dialogue():
     assert translator.prompt_context('\n', 'balanced') == '\n'
 
 
+def test_next_dialogue_is_context_only_and_shortening_receives_original_voice(monkeypatch):
+    seen = []
+
+    def fake(payload, check):
+        seen.append(json.loads(payload['messages'][-1]['content']))
+        return json.dumps({key: 'Em hiểu rồi ạ.' for key in payload['format']['required']})
+
+    monkeypatch.setattr(translator, 'chat', fake)
+    items = [region(f'r{i}', 'I understand.') for i in range(1, 5)]
+    items.append(region('r5', 'Thank you, teacher.'))
+    translator.translate(items, Settings(quality='low'), '', {}, lambda: None)
+    assert seen[0]['next_dialogue'] == ['Thank you, teacher.']
+    assert 'Học trò xưng em' in seen[0]['address_cue']
+    assert list(seen[0]['regions']) == ['r1', 'r2', 'r3', 'r4']
+    assert list(seen[1]['regions']) == ['r5']
+    translator.request_translation(items[:1], Settings(), '', {}, 'cpu', concise=True)
+    assert seen[-1]['previous_translation'] == 'Em hiểu rồi ạ.'
+    assert translator.dialogue_hint(region(text='The reason I called you here'), 'Sao tôi gọi cậu?')
+    assert translator.exact_dialogue(region(text='The reason I called you here'), {}) == 'Lý do tôi gọi cậu đến đây'
+    assert translator.dialogue_hint(region(text='Good morning!'), 'Sáng rồi!')
+    assert translator.exact_dialogue(region(text='Good morning!'), {}) == 'Chào buổi sáng!'
+    assert translator.dialogue_hint(region(text='The reason I called you here was to ask.'), '') is None
+
+
 def test_failed_dialogue_is_retried_with_source_context(monkeypatch):
     contexts = []
 
@@ -98,7 +122,7 @@ def test_failed_dialogue_is_retried_with_source_context(monkeypatch):
         return json.dumps({'r1': 'Chào buổi sáng!' if 'Haru is here' in context else 'Xin chào!'})
 
     monkeypatch.setattr(translator, 'chat', fake)
-    item = region()
+    item = region(text='Good morning, Haru!')
     translator.translate([item], Settings(), 'Haru is here → Haru đã tới.', {}, lambda: None)
     assert len(contexts) == 2 and 'Haru is here' not in contexts[0]
     assert 'Haru is here → Haru đã tới.' in contexts[1]

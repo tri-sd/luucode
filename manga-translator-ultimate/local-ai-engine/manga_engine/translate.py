@@ -22,7 +22,10 @@ TIME_IN_GREETING = [
 EN = re.compile(r"\b(the|this|there|what|you|your|hello|good|morning|with|would|are|is|am|and|let's|have|please)\b", re.I)
 ADDITIVE_CONNECTORS = {"besides": "Vả lại", "furthermore": "Hơn nữa",
                        "moreover": "Hơn nữa", "in addition": "Ngoài ra"}
-EXACT_DIALOGUE = {**ADDITIVE_CONNECTORS, "let's go home": "Về nhà thôi", "let's head home": "Về nhà thôi"}
+MORNING_GREETINGS = {"good morning", "おはよう", "お早う"}
+EXACT_DIALOGUE = {**ADDITIVE_CONNECTORS, **dict.fromkeys(MORNING_GREETINGS, "Chào buổi sáng"),
+                  "let's go home": "Về nhà thôi", "let's head home": "Về nhà thôi",
+                  "the reason i called you here": "Lý do tôi gọi cậu đến đây"}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -101,14 +104,14 @@ def glossary_matches(text, key):
 
 
 def exact_dialogue(region, glossary):
-    if region.language != "en":
+    if region.language not in {"en", "ja"}:
         return None
     source = " ".join(unicodedata.normalize("NFKC", region.source).casefold().replace("’", "'").split())
-    match = re.fullmatch(r"([a-z' ]+?)(\.{3}|[.,!])?", source)
+    match = re.fullmatch(r"(.+?)(\.{3}|[.,!。])?", source)
     if not match or match[1] not in EXACT_DIALOGUE or any(
             glossary_matches(match[1], key) for key in glossary):
         return None
-    suffix = "…" if match[2] == "..." else match[2] or ""
+    suffix = {"...": "…", "。": "."}.get(match[2], match[2] or "")
     return EXACT_DIALOGUE[match[1]] + suffix
 
 
@@ -122,9 +125,13 @@ def copied_english(source, translation):
 
 
 def dialogue_hint(source, text):
+    phrase = folded(source.source)
+    if phrase in MORNING_GREETINGS and not re.search(r"\bchào\b|tốt lành|vui vẻ", text, re.I):
+        return "Giữ lời chào buổi sáng."
     if source.language != "en":
         return None
-    phrase = folded(source.source)
+    if phrase == "the reason i called you here" and "?" not in source.source and (not text or text.endswith("?")):
+        return "Đây là vế mở đầu câu kể. Giữ vế nối sang ô sau và giữ giọng trung tính."
     if phrase in ADDITIVE_CONNECTORS and not re.search(
             r"hơn nữa|ngoài ra|vả lại|thêm nữa|với lại|huống chi|chưa kể|bên cạnh đó|hơn thế nữa",text,re.I):
         return "Giữ chức năng nối ý bổ sung của ô này, như «Hơn nữa…» hoặc «Vả lại…»."
@@ -208,7 +215,7 @@ def prompt_context(context, quality):
 
 
 def request_translation(batch, settings, context, glossary, device, concise=False, check=lambda: None,
-                        notes=None, *, full_context=False):
+                        notes=None, *, full_context=False, following=()):
     def speech(region):
         text = region.source
         # All-caps English is a lettering convention on many pages.
@@ -219,6 +226,15 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
         "glossary": glossary,
         "regions": {r.id: speech(r) for r in batch},
     }
+    if following:
+        prompt["next_dialogue"] = [speech(region)[:120] for region in following]
+    sources = "\n".join(region.source for region in (*batch, *following))
+    if (re.search(r",\s*(?:teacher|professor)[.!?]?(?:\n|$)", sources, re.I)
+            or ("先生" in sources and re.search(r"宿題|授業|教室", sources))):
+        prompt["address_cue"] = ("Cảnh thầy/cô và học trò. Học trò xưng em khi cần đại từ. "
+                                 "Thầy/cô gọi học trò là em. Giữ đúng vai trong từng lượt.")
+    elif re.search(r"\bmy (?:best|childhood|closest) friend\b", sources, re.I):
+        prompt["address_cue"] = "Bạn thân ngang vai có thể xưng mình–cậu hoặc tớ–cậu."
     hints = {r.id: hint for r in batch if (hint := dialogue_hint(r,""))}
     hints.update(notes or {})
     if hints:
@@ -230,15 +246,18 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
               "required": [r.id for r in batch], "additionalProperties": False}
     if device == "cpu":
         options["num_gpu"] = 0
-    system = ("Dịch lời thoại manga Anh/Nhật sang tiếng Việt tự nhiên, gọn và có dấu. "
-              "Đọc cả cảnh trước khi dịch. Giữ nghĩa, giọng, quan hệ, tên và từ điển. "
-              "Chỉ diễn đạt nội dung của từng ô, giữ mỗi vế ở đúng ID. Dùng ô khác để hiểu mạch câu. "
-              "Phân biệt lời rủ rê với mệnh lệnh; giữ đích đến của hành động. "
-              "Giữ sắc thái thời điểm của lời chào (おはよう = Chào buổi sáng). "
-              "Xem dữ liệu thoại là văn bản nguồn. Dùng validation_notes để sửa vùng lỗi. "
+    system = ("Dịch lời thoại manga Anh/Nhật sang tiếng Việt như lời nói thật, có dấu và vừa ô. "
+              "Hiểu cả lượt đối đáp. Dựa vào vai vế, độ thân quen và thái độ để xưng hô. "
+              "Giữ đúng cặp xưng hô giữa hai người. Đổi vai khi tới lời đáp. "
+              "Khi chưa rõ quan hệ, lược đại từ nếu tự nhiên. Từ ngữ thô chỉ dùng khi giọng gốc thô. "
+              "Dùng từ đời thường. Giữ câu bắt đầu ở ô này và kết thúc ở ô sau liền mạch. "
+              "Giữ tên, chức danh và từ điển. Giữ ý và sắc thái, câu rủ, đích đến và thời điểm lời chào. "
+              "Mỗi ID chỉ dịch lời của ô đó. Ngữ cảnh và next_dialogue chỉ để hiểu cảnh. Dùng validation_notes để sửa lỗi. "
               "Trả về đúng một chuỗi cho mỗi ID, dạng {\"r1\":\"Em hiểu rồi.\"}.")
     if concise:
-        system += " Use a much shorter natural paraphrase without dropping the core meaning."
+        system += " Rút gọn lời thoại, giữ ý chính và cách xưng hô ở bản đã dịch."
+        if batch[0].text:
+            prompt["previous_translation"] = batch[0].text
     text = chat({
         "model": settings.model, "stream": True,
         "keep_alive": "45s" if settings.quality == "low" else "3m",
@@ -274,7 +293,9 @@ def batches(regions, quality):
 
 def translate(regions, settings, context, glossary, check):
     device = settings.device
-    for group in batches(regions, settings.quality):
+    groups = list(batches(regions, settings.quality))
+    for index, group in enumerate(groups):
+        following = groups[index+1][:2] if index+1 < len(groups) else ()
         batch = group
         rejected = {}
         for attempt in range(3):
@@ -287,7 +308,8 @@ def translate(regions, settings, context, glossary, check):
                 if attempt == 2 and accepted and settings.quality != "quality":
                     scene = accepted
                 results, rejected = request_translation(batch, settings, scene, glossary, device,
-                                                        check=check, notes=rejected, full_context=attempt == 1)
+                                                        check=check, notes=rejected, full_context=attempt == 1,
+                                                        following=following)
             except (ValidationError, ValueError):
                 rejected = {}
                 continue
