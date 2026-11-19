@@ -627,3 +627,41 @@ def test_translation_retains_meaning_in_adjacent_clauses():
     accepted, rejected = translator.validate(json.dumps(correct), items, {})
     assert set(accepted) == {'r1','r2','r3','r4'} and not rejected
     assert translator.dialogue_hint(region(text='No one needs help.'), 'Không ai cần giúp.') is None
+
+
+def test_reads_outlined_narration_as_one_caption_with_sfx_off(monkeypatch):
+    from PIL import ImageDraw, ImageFont
+    from manga_engine.ocr import Ocr
+    from manga_engine.render import FONTS
+
+    width, height = 490, 280
+    yy, xx = np.indices((height, width))
+    brick = np.where((xx % 21 == 0) | (yy % 14 == 0), 62, 162).astype(np.uint8)
+    page = Image.fromarray(brick).convert("RGB")
+    draw = ImageDraw.Draw(page)
+    face = ImageFont.truetype(str(FONTS/"NotoSans-Italic.ttf"), 27)
+    polygons = []
+    for y, text in ((38, "NO MATTER HOW"), (74, "POWERFUL HE WAS")):
+        coord = (44, y)
+        draw.text(coord, text, font=face, fill="#191919", stroke_width=4, stroke_fill="white")
+        x, a, r, b = draw.textbbox(coord, text, font=face)
+        polygons.append(np.array([(x,a),(r,a),(r,b),(x,b)], np.int32))
+    ocr = Ocr()
+    monkeypatch.setattr(ocr, "detect", lambda *args: polygons)
+    settings = Settings(language="en", sfx=False)
+    rgb = np.asarray(page)
+    regions = ocr.regions(rgb, settings, lambda: None)
+    captions = [item for item in regions if item.narration and not item.issue]
+    assert len(captions) == 1
+    caption = captions[0]
+    assert len(caption.polygons) == 2
+    assert 'NO MATTER HOW POWERFUL HE WAS' in caption.source.upper()
+    caption.text = 'Dù anh ấy mạnh đến đâu'
+    result, rendered = render(rgb, regions, settings, lambda: None)
+    assert rendered == 1 and not caption.issue
+    bounds, _, _, mask = erase_patch(rgb, caption, False)
+    x,y,r,b = bounds
+    outside = np.ones((height,width), dtype=bool)
+    outside[y:b,x:r] = False
+    assert np.all(mask == 255) and np.array_equal(result[outside], rgb[outside])
+    assert not np.array_equal(result[y:b,x:r], rgb[y:b,x:r])

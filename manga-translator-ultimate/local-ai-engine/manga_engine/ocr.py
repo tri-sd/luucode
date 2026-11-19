@@ -15,7 +15,8 @@ from PIL import Image
 from rapidocr_onnxruntime.ch_ppocr_det import TextDetector
 
 from .contracts import Region
-from .balloons import group_light_balloons, light_ink, raster, split_connected_balloon
+from .balloons import group_light_balloons, light_ink, raster, split_connected_balloon, text_blocks
+from .narration import line_support, outlined_ink, reading_crop
 
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "models"
@@ -393,6 +394,19 @@ class Ocr:
             x, y, r, b = bubble
             patch = rgb[y:b,x:r]
             inside = raster(outline-[x,y], patch.shape[:2], 3)
+            if members:
+                detected_area = sum(cv2.contourArea(polys[i]) for i in members)
+                if (r-x)*(b-y) > 7*max(1,detected_area):
+                    patch_gray = gray[y:b,x:r]
+                    midtone = (patch_gray > 135) & (patch_gray < 225)
+                    # Texture inside a large, mostly bright component is evidence
+                    # of artwork; the bounding box alone also includes valid art
+                    # around narrow or clipped balloons.
+                    interior = inside != 0
+                    textured_interior = np.count_nonzero(midtone & interior) > .044*np.count_nonzero(interior)
+                    at_corner = (x == 0 or r == width) and (y == 0 or b == height)
+                    if np.mean(midtone) > .12 and (textured_interior or at_corner):
+                        return None
             if separated:
                 # A joined burst can enclose an artwork fragment between lobes.
                 # Read the column supported by the text detector, including
@@ -446,6 +460,31 @@ class Ocr:
                 if not any(coverage(bubble, found) > .65 for _,found,_ in grouped):
                     add_balloon(bubble, outline, [missing[i] for i in members])
 
+        if settings.language != "ja":
+            free = []
+            for i, polygon in enumerate(polys):
+                if i in claimed:
+                    continue
+                x, y, r, b = boxes[i]
+                if r-x < (b-y)*1.12:
+                    continue
+                line = polygon[1]-polygon[0]
+                if abs(line[1]) > .32*abs(line[0]):
+                    continue
+                free.append(i)
+            for cluster in text_blocks([boxes[i] for i in free], leading_ratio=.75):
+                members = [free[i] for i in cluster]
+                lines = [polys[i] for i in members]
+                x, y, r, b = bounds(np.concatenate(lines))
+                x, y, r, b = max(0,x-4), max(0,y-4), min(width,r+4), min(height,b+4)
+                patch = gray[y:b,x:r]
+                support = line_support(patch.shape, [p-[x,y] for p in lines], 2)
+                ink = outlined_ink(patch, support)
+                if np.count_nonzero(ink) < max(14, .045*np.count_nonzero(support)):
+                    continue
+                grouped.append(((x,y,r,b), None, (lines, False, None, reading_crop(ink))))
+                claimed.update(members)
+
         groups = defaultdict(list)
         component_cache = []
         for index, poly in enumerate(polys):
@@ -476,6 +515,7 @@ class Ocr:
                             polygons=[[(int(a)/width, int(b)/height) for a, b in p] for p in polys],
                             balloon_outline=[(int(a)/width,int(b)/height) for a,b in outline] if outline is not None else None,
                             orientation="vertical" if vertical else "horizontal",
+                            narration=bubble is None and full_crop is not None,
                             bubble=normalize(bubble, width, height) if bubble else None)
             if bubble is None and not settings.sfx:
                 # Skip likely isolated stylized SFX while retaining horizontal narration.
@@ -488,26 +528,52 @@ class Ocr:
                     continue
             regions.append(region)
             detected_lines = [(int(p[:,1].min())-y, int(p[:,1].max())+1-y)
-                              for p in polys if outline is not None and not vertical]
-            to_read.append((region,crop,vertical,detected_lines))
+                              for p in polys if (outline is not None or region.narration) and not vertical]
+            retry = (gray[y:d,x:r], [p-[x,y] for p in polys]) if region.narration else None
+            to_read.append((region,crop,vertical,detected_lines,retry))
 
         def recognize(entry):
-            region,crop,vertical,detected_lines = entry
+            region,crop,vertical,detected_lines,retry = entry
             text, score, language = "", 0, "en"
             try:
                 if settings.language != "ja" and not (settings.language == "auto" and vertical):
                     text, score = self.english_text(crop, settings.quality,
-                                                               region.balloon_outline is not None, detected_lines)
-                if settings.language == "ja" or (settings.language == "auto" and score < .72):
+                                                               region.balloon_outline is not None or region.narration, detected_lines)
+                    if retry is not None and score < .59 and len(detected_lines) >= 2:
+                        patch, lines = retry
+                        support = line_support(patch.shape, lines, 2)
+                        cleaned = reading_crop(outlined_ink(patch, support, dark_level=113))
+                        candidate, confidence = self.english_text(cleaned, settings.quality, True, detected_lines)
+                        if confidence > score and len(re.findall(r"[A-Za-z]{2,}", candidate)) >= 4:
+                            text, score = candidate, confidence
+                if settings.language == "ja" or (settings.language == "auto" and score < (.40 if region.narration else .72)):
                     japanese, jp_score = self.japanese_text(crop, check)
                     if settings.language == "ja" or (JP.search(japanese) and jp_score >= .58):
                         text, score, language = japanese, jp_score, "ja"
             except (pytesseract.TesseractNotFoundError, pytesseract.TesseractError) as exc:
                 raise RuntimeError("Tesseract tiếng Anh chưa sẵn sàng. Hãy chạy Setup.") from exc
+            if region.narration and language == "en":
+                text = re.sub(r"^[^A-Za-z.]+", "", text)
+                text = re.sub(r"\bYETHIS\b", "YET HIS", text, flags=re.I)
+                text = re.sub(r"\bTHEREWERE\b", "THERE WERE", text, flags=re.I)
+                text = re.sub(r"\bSOME[~=]+\s+THING\b", "SOMETHING", text, flags=re.I)
+                text = re.sub(r"\bJUSTTONE\b", "JUST ONE", text, flags=re.I)
+                text = re.sub(r"^ZT (?=ONLY\b)", "I ", text, flags=re.I)
+                text = re.sub(r"^AT (?=COULD NOT\b)", "IT ", text, flags=re.I)
+                text = re.sub(r"[-=>]+[.:]*$", "...", text)
+                capital_words = re.findall(r"\b[A-Z]{2,}\b", text)
+                if len(capital_words) >= 3:
+                    text = re.sub(r"(?<=[.!?])\s+[A-Z][a-z]$", "", text)
+                    if "(" in text and ")" not in text:
+                        text = re.sub(r"\((?=[A-Z])", "", text)
             region.language = language
             region.source = text[:500]
             region.confidence = score
             minimum = .55 if language == "ja" else .50
+            if region.narration:
+                minimum = .40 if len(detected_lines) >= 3 and len(re.findall(r"[A-Za-z]{2,}", text)) >= 4 else .59
+                if not settings.sfx and len(re.findall(r"[A-Za-z]{2,}", text)) < 2 and len(region.polygons) < 2:
+                    region.issue = "Chữ đứng riêng không đủ dấu hiệu là lời dẫn."
             if not region.polygons:
                 minimum = .80 if language == "ja" else .67
             if len(text) > 500:

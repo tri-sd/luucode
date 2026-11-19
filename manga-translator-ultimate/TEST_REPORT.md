@@ -1,5 +1,9 @@
 # Kiểm thử hồi quy
 
+## Bản 1.10
+
+**36 bài đạt** với Chromium và Qwen3 local trên Linux. Mẫu hồi quy mới đọc chung hai dòng chữ viền sáng trên nền gạch, kết xuất một lời dẫn khi tắt SFX và giữ pixel ngoài vùng chèn. Ảnh chương 147 của Frieren cho 14 cụm lời dẫn cùng bản dịch. OCR tiếp tục đọc được cả 9 ô đã đối chiếu ở chương 466 của Iruma. [Ghi chú cập nhật](docs/UPDATE-1.10.md).
+
 ## Bản 1.9
 
 **35 bài đạt** với Chromium và Qwen3 local trên Linux. Kiểm thử mới xác nhận việc giữ số, ý phủ định, mốc ngày, từ điển và lời đã sửa tay. Ảnh của ô không vừa bản biên tập khớp từng pixel với ảnh được kết xuất bằng bản nháp. Đổi font tiếp tục dùng lại cache. Cả 9 ô đối chiếu ở chương 466 hiện bản dịch. [Ghi chú và số đo](docs/UPDATE-1.9.md).

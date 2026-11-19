@@ -24,6 +24,13 @@ def font(style, size):
 
 def erase_patch(rgb, region, aggressive):
     height, width = rgb.shape[:2]
+    if region.narration:
+        x, y, r, b = pixels(region.box, width, height)
+        patch = rgb[y:b,x:r]
+        if min(patch.shape[:2]) < 5:
+            return None
+        bg = np.array([250, 250, 250], dtype=np.uint8)
+        return (x,y,r,b), np.full_like(patch, 250), bg, np.full(patch.shape[:2], 255, np.uint8)
     if region.balloon_outline and region.bubble:
         x,y,r,b = pixels(region.bubble,width,height)
         patch = rgb[y:b,x:r]
@@ -218,6 +225,8 @@ def render(rgb, regions, settings, check, shorten=None, *, original_texts=None):
         if ellipse:
             margin = max(3, round(min(r-x, b-y)*.075))
             rect = x+margin, y+margin, r-margin, b-margin
+        elif region.placement is None and region.narration:
+            rect = x+3, y+3, r-3, b-3
         elif region.placement is None:
             rect = max(0, x-3), max(0, y-3), min(width, r+3), min(height, b+3)
         else:

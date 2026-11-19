@@ -2,6 +2,7 @@
 
 Chrome Manifest V3 và một chương trình chạy trên máy để dịch ảnh truyện tiếng Anh hoặc Nhật sang tiếng Việt. Kết quả là PNG cùng kích thước pixel với ảnh đầu vào. Chữ Việt được vẽ lên ảnh nên di chuyển cùng các nét vẽ khi cuộn, thay đổi kích thước hoặc zoom.
 
+- [Cập nhật 1.10 và chữ ngoài bong bóng](docs/UPDATE-1.10.md)
 - [Cập nhật 1.9 và biên tập lời thoại](docs/UPDATE-1.9.md)
 - [Cập nhật 1.8 và cách xưng hô theo cảnh](docs/UPDATE-1.8.md)
 - [Cập nhật 1.7 và tốc độ dịch cả chương](docs/UPDATE-1.7.md)

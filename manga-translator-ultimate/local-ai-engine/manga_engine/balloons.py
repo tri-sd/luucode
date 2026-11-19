@@ -111,7 +111,7 @@ def _missing_line_bridge(ink, box, other, height):
     return rows.size > 0 and np.max(np.diff(np.r_[-1, rows, len(occupied)])) <= 1.2*height
 
 
-def text_blocks(boxes, ink=None):
+def text_blocks(boxes, ink=None, *, leading_ratio=1.2):
     """Group printed fragments into lines and vertically aligned text blocks."""
     lines = []
     for index in sorted(range(len(boxes)), key=lambda i: (boxes[i][1], boxes[i][0])):
@@ -137,7 +137,7 @@ def text_blocks(boxes, ink=None):
             overlap_x = min(r,right)-max(x,left)
             if leading < -.28*height or overlap_x < .55*min(r-x,right-left):
                 continue
-            if leading > 1.2*height and (ink is None or not _missing_line_bridge(
+            if leading > leading_ratio*height and (ink is None or not _missing_line_bridge(
                     ink,(x,y,r,b),(left,top,right,bottom),height)):
                 continue
             offset = abs((left+right)-(x+r))/2
