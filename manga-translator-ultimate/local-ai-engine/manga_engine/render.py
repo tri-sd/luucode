@@ -199,7 +199,7 @@ def fit_balloon(text, safe, x, y, style, scale, focus):
     return rect, fit
 
 
-def render(rgb, regions, settings, check, shorten=None):
+def render(rgb, regions, settings, check, shorten=None, *, original_texts=None):
     result = rgb.copy()
     height, width = rgb.shape[:2]
     rendered = 0
@@ -239,6 +239,9 @@ def render(rgb, regions, settings, check, shorten=None):
             return fit_balloon(text,safe,source_rect[0],source_rect[1],style,scale,focus) or (rect,None)
 
         rect, typeset = fit(region.text)
+        if typeset is None and original_texts and region.id in original_texts:
+            region.text = original_texts[region.id]
+            rect, typeset = fit(region.text)
         if typeset is None and shorten:
             short = shorten(region)
             if short and len(short) < len(region.text):

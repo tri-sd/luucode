@@ -63,7 +63,7 @@ class Cache:
                              (key,)).fetchone()
             if row:
                 metadata = json.loads(row[0])
-                return metadata["translation_base"], metadata["device"]
+                return metadata["translation_base"], metadata["device"], metadata.get("translation_original_texts", {})
             return None
 
     def put(self, key, original, output, metadata, edits=None):

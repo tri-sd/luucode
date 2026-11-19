@@ -44,6 +44,10 @@ def test_greeting_does_not_drop_time_of_day():
         '{"translations":[{"id":"r1","text":"Xin chào!"},{"id":"r2","text":"Chào buổi tối!"}]}',items,{})
     assert output == {'r2':'Chào buổi tối!'}
     assert list(rejected) == ['r1']
+    assert translator.dialogue_hint(region(text='おはよう、山田先生。', language='ja'), 'Sáng rồi, cô Yamada.')
+    sibling = region(text='お姉ちゃん、これ直せる？', language='ja')
+    assert translator.dialogue_hint(sibling, 'Em hiểu rồi.')
+    assert translator.dialogue_hint(sibling, 'Chị ơi, sửa được cái này không?') is None
 
 
 def test_glossary_and_retry_keeps_valid_results(monkeypatch):
@@ -129,6 +133,79 @@ def test_failed_dialogue_is_retried_with_source_context(monkeypatch):
     assert item.text == 'Chào buổi sáng!'
 
 
+def test_polishing_keeps_guarded_dialogue_and_accepts_a_natural_rewrite(monkeypatch):
+    cases = [
+        ('Could you give me a hand?', 'Cậu có thể giúp tớ một chút được không?', 'Cậu giúp tớ một tay nhé?'),
+        ('I understand.', 'Tôi đã sửa tay.', 'Tớ hiểu rồi.'),
+        ('Come back in 3 days.', 'Quay lại sau 3 ngày nhé.', '5 ngày nữa quay lại nhé.'),
+        ("I won't come back.", 'Tớ sẽ không quay lại.', 'Tớ sẽ quay lại.'),
+        ('Meet me at the East Gate.', 'Gặp tớ ở Cổng Đông.', 'Ra cổng thành gặp tớ nhé.'),
+        ('Good morning!', 'Chào buổi sáng!', 'Xin chào!'),
+        ('Come back tomorrow.', 'Mai quay lại nhé.', 'Hôm nay quay lại nhé.'),
+    ]
+    items = []
+    for offset, (source, draft, _) in enumerate(cases, 1):
+        item = region(f'r{offset}', source)
+        item.text = draft
+        items.append(item)
+    candidates = {item.id: case[2] for item, case in zip(items, cases)}
+    seen = []
+
+    def fake(batch, scene, settings, context, glossary, device, check):
+        seen.extend(item.id for item in batch)
+        output = [{'id': item.id, 'text': candidates[item.id]} for item in batch]
+        accepted, _ = translator.validate(json.dumps({'translations': output}), batch, glossary)
+        return accepted
+
+    monkeypatch.setattr(translator, 'request_polish', fake)
+    translator.polish_dialogue(items, Settings(quality='quality'), '', {'East Gate': 'Cổng Đông'},
+                               'cpu', lambda: None, protected={'r2'})
+    assert sorted(seen) == ['r1', 'r3', 'r4', 'r5', 'r6', 'r7']
+    assert [item.text for item in items] == [cases[0][2], *(case[1] for case in cases[1:])]
+    assert not any(item.issue for item in items)
+
+
+@pytest.mark.parametrize('quality, expected_calls', [('quality', 1), ('low', 0)])
+def test_polishing_failure_or_low_memory_mode_keeps_first_draft(monkeypatch, quality, expected_calls):
+    item = region(text='Could you give me a hand?')
+    item.text = 'Cậu có thể giúp tớ một chút được không?'
+    calls = []
+
+    def fail(*args, **kwargs):
+        calls.append(1)
+        raise OSError('Ollama tạm thời chưa phản hồi')
+
+    monkeypatch.setattr(translator, 'request_polish', fail)
+    translator.polish_dialogue([item], Settings(quality=quality), '', {}, 'cpu', lambda: None)
+    assert len(calls) == expected_calls
+    assert item.text == 'Cậu có thể giúp tớ một chút được không?' and not item.issue
+
+
+def test_balanced_polishing_targets_stilted_lines(monkeypatch):
+    homework = region('r1', 'Hand in your homework tomorrow.')
+    homework.text = 'Em gửi bài tập vào ngày mai nhé.'
+    ordinary = region('r2', 'All right.')
+    ordinary.text = 'Dạ, em biết rồi.'
+    invitation = region('r3', "Let's go home.")
+    invitation.text = 'Chúng ta đi về nhà đi.'
+    friend = region('r4', "Come on, you're my best friend.")
+    friend.text = 'Mày là bạn thân của tớ mà.'
+    seen = []
+
+    def polish(batch, scene, settings, context, glossary, device, check):
+        seen.append([item.id for item in batch])
+        assert ordinary in scene
+        return {'r1': 'Mai nộp bài nhé.'}
+
+    monkeypatch.setattr(translator, 'request_polish', polish)
+    translator.polish_dialogue([homework, ordinary, invitation, friend], Settings(), '', {}, 'cpu', lambda: None)
+    assert seen == [['r1']]
+    assert [homework.text, ordinary.text, invitation.text] == [
+        'Mai nộp bài nhé.', 'Dạ, em biết rồi.', 'Về nhà thôi.',
+    ]
+    assert friend.text == 'Cậu là bạn thân của tớ mà.'
+
+
 def test_batch_size_respects_text_length():
     items = [region(f'r{i}', 'a'*460) for i in range(1,6)]
     assert [len(batch) for batch in translator.batches(items,'balanced')] == [2,2,1]
@@ -152,6 +229,8 @@ def test_font_change_reuses_unedited_translation_after_reopen(tmp_path, monkeypa
     raw = pipeline.png(np.full((80,80,3),255,dtype=np.uint8), None)
     page = PageInput(image=base64.b64encode(raw).decode(), settings=Settings(), context='Cảnh đầu')
     calls = []
+    protected_ids = []
+    layout_fallbacks = []
     monkeypatch.setattr(pipeline, 'installed', lambda model: {'digest':model})
     def read(self, *args):
         calls.append('ocr')
@@ -160,25 +239,39 @@ def test_font_change_reuses_unedited_translation_after_reopen(tmp_path, monkeypa
         calls.append('translate')
         regions[0].text = 'Chào buổi sáng!'
         return 'cpu'
+    def polish(regions, *args, protected):
+        protected_ids.append(list(protected))
+        if 'r1' not in protected:
+            regions[0].text = 'Em chào buổi sáng!'
+    def render_page(rgb, *args, original_texts=None):
+        layout_fallbacks.append(original_texts)
+        return rgb, 1
     monkeypatch.setattr(pipeline.Ocr, 'regions', read)
     monkeypatch.setattr(pipeline, 'translate', translate)
-    monkeypatch.setattr(pipeline, 'render', lambda rgb, *args: (rgb,1))
+    monkeypatch.setattr(pipeline, 'polish_dialogue', polish)
+    monkeypatch.setattr(pipeline, 'render', render_page)
     def process(engine, page):
         key = engine.process(page, lambda:None, lambda _:None)['key']
         return key, engine.cache.page(key)[1]
     key, first = process(engine, page)
-    engine.cache.put(key, raw, raw, first, {'r1': {'text':'Lời sửa tay'}})
+    engine.cache.put(key, raw, raw, first, {'r1': {'id':'r1', 'text':'Lời sửa tay'}})
 
     reopened = pipeline.Engine(Cache(path, 1_000_000))
     styled = page.model_copy(update={'settings': Settings(font='bold')})
     _, persisted = process(reopened, styled)
     assert calls == ['ocr','translate']
-    assert persisted['regions'][0]['text'] == 'Chào buổi sáng!'
+    assert protected_ids == [[]]
+    assert layout_fallbacks == [{'r1': 'Chào buổi sáng!'}]*2
+    assert persisted['regions'][0]['text'] == 'Em chào buổi sáng!'
     assert persisted['settings']['font'] == 'bold'
     process(reopened, styled.model_copy(update={'force': True}))
     changed_context = page.model_copy(update={'settings': Settings(font='italic'), 'context':'Cảnh khác'})
     process(reopened, changed_context)
     assert calls == ['ocr','translate']*3
+    _, forced = process(reopened, page.model_copy(update={'force': True}))
+    assert protected_ids == [[], [], [], ['r1']]
+    assert layout_fallbacks[-1] is None
+    assert forced['regions'][0]['text'] == 'Lời sửa tay'
 
 
 def test_low_memory_unloads_once_after_layout(tmp_path, monkeypatch):
@@ -259,6 +352,24 @@ def test_inpaint_and_vietnamese_layout_keep_border():
         face, lines = layout('Tiếng Việt rất đẹp', (15,15,245,120),style,1,True)
         assert face.getmask('ắ').getbbox() is not None and lines
     assert layout('x'*300,(5,5,35,22),'regular',1,False) is None
+
+
+def test_polished_line_that_does_not_fit_uses_original_draft_before_shortening():
+    img, draft = example_patch()
+    expected, count = render(img, [draft], Settings(), lambda: None)
+    assert count == 1
+
+    polished = draft.model_copy(update={'text': 'x'*450})
+
+    def shorten(region):
+        pytest.fail('The draft already fits, so shortening is unnecessary.')
+
+    actual, count = render(img, [polished], Settings(), lambda: None, shorten,
+                           original_texts={draft.id: draft.text})
+    assert count == 1 and not polished.issue
+    assert polished.text == draft.text
+    assert polished.box == draft.box and polished.bubble == draft.bubble
+    assert np.array_equal(actual, expected)
 
 
 def test_cache_lru_corrections_and_reopen(tmp_path):

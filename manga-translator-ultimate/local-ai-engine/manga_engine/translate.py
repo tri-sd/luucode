@@ -26,6 +26,7 @@ MORNING_GREETINGS = {"good morning", "おはよう", "お早う"}
 EXACT_DIALOGUE = {**ADDITIVE_CONNECTORS, **dict.fromkeys(MORNING_GREETINGS, "Chào buổi sáng"),
                   "let's go home": "Về nhà thôi", "let's head home": "Về nhà thôi",
                   "the reason i called you here": "Lý do tôi gọi cậu đến đây"}
+FRIENDLY_REASSURANCE = re.compile(r"come on,\s*you(?:'re| are) my (?:best|closest) friend\b")
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -126,8 +127,14 @@ def copied_english(source, translation):
 
 def dialogue_hint(source, text):
     phrase = folded(source.source)
-    if phrase in MORNING_GREETINGS and not re.search(r"\bchào\b|tốt lành|vui vẻ", text, re.I):
+    if (re.match(r"(?:good morning|おはよう(?:ございます)?|お早う)(?:[\s,.!?、。！？]|$)", phrase)
+            and not re.search(r"\bchào\b|tốt lành|vui vẻ", text, re.I)):
         return "Giữ lời chào buổi sáng."
+    if source.language == "ja":
+        if re.match(r"お?姉(?:ちゃん|さん|さま)[、,]", source.source) and not re.search(r"\bchị\b", text, re.I):
+            return "Đây là lời gọi chị gái. Giữ cách gọi «chị»."
+        if re.search(r"[?？][!！]?$", source.source) and (not text or not re.search(r"\?[!]?$", text)):
+            return "Giữ dạng câu hỏi ở cuối lời thoại."
     if source.language != "en":
         return None
     if phrase == "the reason i called you here" and "?" not in source.source and (not text or text.endswith("?")):
@@ -231,21 +238,14 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
     sources = "\n".join(region.source for region in (*batch, *following))
     if (re.search(r",\s*(?:teacher|professor)[.!?]?(?:\n|$)", sources, re.I)
             or ("先生" in sources and re.search(r"宿題|授業|教室", sources))):
-        prompt["address_cue"] = ("Cảnh thầy/cô và học trò. Học trò xưng em khi cần đại từ. "
-                                 "Thầy/cô gọi học trò là em. Giữ đúng vai trong từng lượt.")
+        prompt["address_cue"] = ("Chỉ áp dụng ở lượt thầy/cô và học trò nói với nhau. "
+                                 "Học trò xưng em khi cần đại từ. Xét ai đang nói ở từng lượt.")
     elif re.search(r"\bmy (?:best|childhood|closest) friend\b", sources, re.I):
-        prompt["address_cue"] = "Bạn thân ngang vai có thể xưng mình–cậu hoặc tớ–cậu."
+        prompt["address_cue"] = "Khi hai bạn thân nói trực tiếp với nhau, có thể xưng mình–cậu hoặc tớ–cậu."
     hints = {r.id: hint for r in batch if (hint := dialogue_hint(r,""))}
     hints.update(notes or {})
     if hints:
         prompt["validation_notes"] = hints
-    threads = min(4, max(2, (len(os.sched_getaffinity(0))-1) if hasattr(os, "sched_getaffinity") else 4))
-    options = {"num_ctx": 4096, "num_predict": min(900, 90 + 66*len(batch)), "temperature": 0,
-               "num_thread": min(threads, 2) if settings.quality == "low" else threads}
-    schema = {"type": "object", "properties": {r.id: {"type": "string"} for r in batch},
-              "required": [r.id for r in batch], "additionalProperties": False}
-    if device == "cpu":
-        options["num_gpu"] = 0
     system = ("Dịch lời thoại manga Anh/Nhật sang tiếng Việt như lời nói thật, có dấu và vừa ô. "
               "Hiểu cả lượt đối đáp. Dựa vào vai vế, độ thân quen và thái độ để xưng hô. "
               "Giữ đúng cặp xưng hô giữa hai người. Đổi vai khi tới lời đáp. "
@@ -253,11 +253,22 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
               "Dùng từ đời thường. Giữ câu bắt đầu ở ô này và kết thúc ở ô sau liền mạch. "
               "Giữ tên, chức danh và từ điển. Giữ ý và sắc thái, câu rủ, đích đến và thời điểm lời chào. "
               "Mỗi ID chỉ dịch lời của ô đó. Ngữ cảnh và next_dialogue chỉ để hiểu cảnh. Dùng validation_notes để sửa lỗi. "
-              "Trả về đúng một chuỗi cho mỗi ID, dạng {\"r1\":\"Em hiểu rồi.\"}.")
+              "Trả JSON với ID của ô làm khóa và lời dịch làm giá trị.")
     if concise:
         system += " Rút gọn lời thoại, giữ ý chính và cách xưng hô ở bản đã dịch."
         if batch[0].text:
             prompt["previous_translation"] = batch[0].text
+    return request_regions(batch, system, prompt, settings, glossary, device, check)
+
+
+def request_regions(batch, system, prompt, settings, glossary, device, check):
+    threads = min(4, max(2, (len(os.sched_getaffinity(0))-1) if hasattr(os, "sched_getaffinity") else 4))
+    options = {"num_ctx": 4096, "num_predict": min(900, 90 + 66*len(batch)), "temperature": 0,
+               "num_thread": min(threads, 2) if settings.quality == "low" else threads}
+    schema = {"type": "object", "properties": {r.id: {"type": "string"} for r in batch},
+              "required": [r.id for r in batch], "additionalProperties": False}
+    if device == "cpu":
+        options["num_gpu"] = 0
     text = chat({
         "model": settings.model, "stream": True,
         "keep_alive": "45s" if settings.quality == "low" else "3m",
@@ -269,6 +280,115 @@ def request_translation(batch, settings, context, glossary, device, concise=Fals
     if not isinstance(keyed, list) or not all(isinstance(pair, tuple) and len(pair) == 2 for pair in keyed):
         raise ValueError("Phản hồi dịch phải là đối tượng theo ID.")
     return validate(json.dumps({"translations": [{"id":key,"text":value} for key,value in keyed]}), batch, glossary)
+
+
+def editorial_note(region, draft):
+    if region.language != "en":
+        return None
+    source, text = folded(region.source), folded(draft)
+    if re.search(r"\bpowerless to help\b", source) and re.search(r"\byếu (?:đuối|hơn)\b", text):
+        return "Đây là khả năng giúp đỡ bị hạn chế. Dùng «khó giúp» hoặc «bất lực», giữ ý so sánh nếu có."
+    if re.search(r"\b(?:hand|turn) in\b", source) and "homework" in source and re.search(r"\b(?:gửi|giao)\b", text):
+        return "Dùng cách nói «nộp bài». Giữ hạn nộp và giọng nhắc nhở của người nói."
+    if source.startswith("was made by ") and text.startswith("đã được ") and text.endswith(" quyết định"):
+        return "Đây là vế sau của câu. Dùng «do … đưa ra», giữ nguyên tên và người tham gia."
+    if FRIENDLY_REASSURANCE.match(source):
+        if text.startswith("đi thôi"):
+            return "Đây là lời dỗ bạn mở lòng. Dịch «Thôi nào», giữ ý đang khuyên bạn chia sẻ."
+        if re.search(r"\btớ\b", text) and re.search(r"\bmày\b", text):
+            return "Giữ cặp xưng hô tớ–cậu trong lời dỗ bạn."
+    return None
+
+
+def request_polish(batch, scene, settings, context, glossary, device, check):
+    editable = {region.id for region in batch}
+    prompt = {
+        "chapter_context": prompt_context(context, settings.quality)[-460:],
+        "glossary": glossary,
+        "dialogue": [{"id": region.id, "source": region.source, "draft": region.text,
+                      "note": editorial_note(region, region.text)} if region.id in editable else
+                     {"draft": region.text} for region in scene],
+        "edit_ids": [region.id for region in batch],
+    }
+    system = ("Biên tập thoại truyện tranh tiếng Việt. Đọc nguyên văn, bản nháp và các lượt đáp. "
+              "Viết lại các câu dịch sát chữ theo nhịp nói thật. Ví dụ «Cậu có thể vui lòng đưa nó cho tôi được không?» "
+              "thành «Cậu đưa giúp tôi cái đó được không?». Ưu tiên xử lý note nếu có. "
+              "Giữ hơi nói riêng của nhân vật, mức lịch sự, ý phủ định, thời gian, tên và số. "
+              "Khi chưa rõ vai, giữ cách gọi có căn cứ hoặc lược đại từ. Giữ vế nối qua ô đúng vị trí. "
+              "Chỉ trả JSON với ID làm khóa và lời thoại đã biên tập làm giá trị.")
+    values, _ = request_regions(batch, system, prompt, settings, glossary, device, check)
+    return values
+
+
+NUMBER = re.compile(r"(?<!\w)\d+(?:[.,]\d+)*(?!\w)")
+NEGATION = re.compile(r"\b(?:không|chưa|chẳng|đừng|chớ)\b", re.I)
+DAY_REFERENCES = [
+    (r"\byesterday\b|昨日", r"\bhôm qua\b"),
+    (r"\btoday\b|今日", r"\bhôm nay\b"),
+    (r"\btomorrow\b|明日", r"\bmai\b"),
+]
+
+
+def keeps_dialogue_facts(region, text):
+    draft = region.text
+    if region.language == "ja" and region.source.startswith("やった、") and re.match(r"yệt\b", text, re.I):
+        return False
+    if sorted(NUMBER.findall(draft)) != sorted(NUMBER.findall(text)):
+        return False
+    # A final “không?” is often a question particle, rather than a negation.
+    strip_question = lambda line: re.sub(r"\bkhông\s*\?$", "?", line, flags=re.I)
+    if len(NEGATION.findall(strip_question(draft))) != len(NEGATION.findall(strip_question(text))):
+        return False
+    if draft.endswith("?") != text.endswith("?"):
+        return False
+    if any(re.search(original, region.source, re.I) and re.search(target, draft, re.I)
+           and not re.search(target, text, re.I) for original, target in DAY_REFERENCES):
+        return False
+    # Preserve proper names shared by source and draft, including OCR in all caps.
+    names = re.findall(r"(?<!\w)[A-Z][a-z]+(?:-[a-z]+)?", draft)
+    return all(not glossary_matches(folded(region.source), name) or glossary_matches(folded(text), name)
+               for name in names if folded(name) not in {"i", "you", "no", "yes"})
+
+
+def polish_dialogue(regions, settings, context, glossary, device, check, protected=()):
+    """Edit dialogue before layout. Keep the successful translation on any rejected edit."""
+    scene = [region for region in regions if region.text and not region.issue]
+    eligible = [region for region in scene if region.id not in protected]
+    for region in eligible:
+        if re.search(r"\bđi về nhà đi\b", region.text, re.I):
+            exact = exact_dialogue(region, glossary)
+            if exact and keeps_dialogue_facts(region, exact):
+                region.text = exact
+        if region.language == "en" and not any(glossary_matches(folded(region.source), key) for key in glossary):
+            if FRIENDLY_REASSURANCE.match(folded(region.source)):
+                region.text = re.sub(r"^đi thôi(?=,)", "Thôi nào", region.text, flags=re.I)
+                if re.search(r"\btớ\b", region.text, re.I):
+                    region.text = re.sub(r"\bmày\b", lambda m: "Cậu" if m[0].isupper() or m[0].istitle() else "cậu",
+                                         region.text, flags=re.I)
+            if date := re.search(r"\bin (\d+) days\b", folded(region.source)):
+                count = date[1]
+                region.text = re.sub(rf"\btrong {count} ngày tới\b", f"{count} ngày nữa", region.text, flags=re.I)
+    if settings.quality == "low":
+        return
+    if settings.quality != "quality":
+        eligible = [region for region in eligible if editorial_note(region, region.text)]
+    # Cap extra model work per page. Each call includes nearby successful lines.
+    positions = {region.id: index for index, region in enumerate(scene)}
+    for index in range(0, min(len(eligible), 12), 6):
+        batch = eligible[index:index+6]
+        nearby = {position for region in batch for position in range(
+            max(0, positions[region.id]-1), min(len(scene), positions[region.id]+2))}
+        check()
+        try:
+            edited = request_polish(batch, [scene[i] for i in sorted(nearby)],
+                                    settings, context, glossary, device, check)
+        except (OSError, RuntimeError, ValueError, ValidationError):
+            continue
+        for region in batch:
+            text = edited.get(region.id)
+            if (text and len(text) <= len(region.text)+min(12, len(region.text)//4)
+                    and keeps_dialogue_facts(region, text) and not editorial_note(region, text)):
+                region.text = text
 
 
 def batches(regions, quality):

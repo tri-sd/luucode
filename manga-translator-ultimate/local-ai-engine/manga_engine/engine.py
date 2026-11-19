@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from .contracts import Edit, Region, Settings
 from .ocr import Ocr
 from .render import render
-from .translate import installed, request_translation, translate, unload
+from .translate import installed, polish_dialogue, request_translation, translate, unload
 
 MAX_IMAGE = 22_020_096
 MAX_RESULT = 40_000_000
@@ -75,6 +75,7 @@ class Engine:
              glossary, page.context], sort_keys=True)
         translation_key = hashlib.sha256(translation_identity.encode()).hexdigest()
         saved = None if page.force else self.cache.translation(translation_key)
+        edits = self.cache.corrections(key)
         with ExitStack() as cleanup:
             release_pending = page.settings.quality == "low"
 
@@ -92,14 +93,16 @@ class Engine:
                 if translatable:
                     using_model()
                 device = translate(regions, page.settings, page.context, glossary, check)
+                drafts = {region.id: region.text for region in translatable}
+                polish_dialogue(regions, page.settings, page.context, glossary, device, check, protected=edits)
+                original_texts = {r.id: drafts[r.id] for r in translatable if drafts[r.id] != r.text}
                 translation_base = ([r.model_dump(mode="json") for r in regions]
                                     if translatable and all(r.text for r in translatable) else None)
             else:
                 progress("Dùng lại bản dịch đã lưu")
-                translation_base, device = saved
+                translation_base, device, original_texts = saved
                 regions = [Region.model_validate(r) for r in translation_base]
             base = [r.model_dump(mode="json") for r in regions]
-            edits = self.cache.corrections(key)
             self.apply_edits(regions, edits)
             progress("Xóa nét gốc và dàn chữ tiếng Việt")
             budget = 4 if page.settings.quality == "quality" else 1
@@ -117,7 +120,11 @@ class Engine:
                 except (OSError, RuntimeError, ValueError, ValidationError):
                     return None
 
-            result, count = render(rgb, regions, page.settings, check, shorten)
+            layout_fallback = {key: text for key, text in original_texts.items() if key not in edits}
+            if layout_fallback:
+                result, count = render(rgb, regions, page.settings, check, shorten, original_texts=layout_fallback)
+            else:
+                result, count = render(rgb, regions, page.settings, check, shorten)
         data = png(result, alpha) if count else b""
         if len(data) > MAX_RESULT:
             raise ValueError("Ảnh PNG kết quả vượt 40 MB. Vui lòng chia ảnh trước khi dịch.")
@@ -133,6 +140,8 @@ class Engine:
                 "device": device, "edits": list(edits)}
         if translation_base is not None:
             meta.update(translation_key=translation_key, translation_base=translation_base)
+            if original_texts:
+                meta["translation_original_texts"] = original_texts
         self.cache.put(key, raw, data, meta)
         return {"key": key, "cached": False}
 

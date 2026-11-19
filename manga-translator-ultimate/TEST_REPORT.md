@@ -1,5 +1,9 @@
 # Kiểm thử hồi quy
 
+## Bản 1.9
+
+**35 bài đạt** với Chromium và Qwen3 local trên Linux. Kiểm thử mới xác nhận việc giữ số, ý phủ định, mốc ngày, từ điển và lời đã sửa tay. Ảnh của ô không vừa bản biên tập khớp từng pixel với ảnh được kết xuất bằng bản nháp. Đổi font tiếp tục dùng lại cache. Cả 9 ô đối chiếu ở chương 466 hiện bản dịch. [Ghi chú và số đo](docs/UPDATE-1.9.md).
+
 ## Bản 1.8
 
 **30 bài đạt** với Chromium và Qwen3 local trên Linux. Đã đọc thử năm cảnh Anh và Nhật. Các cảnh có quan hệ rõ cho ra cách xưng hô tớ–cậu, chị–em và thầy–em. Trong mẫu thiếu dấu hiệu quan hệ, mô hình vẫn có thể chọn đại từ lệch vai. Kiểm thử xác nhận các ô đọc trước chỉ cung cấp ngữ cảnh, và lượt rút gọn nhận bản dịch đã có để giữ giọng thoại. Ba trang gốc chương 466 hiện đủ 9/9 ô từng bỏ sót. [Cách cập nhật](docs/UPDATE-1.8.md).
